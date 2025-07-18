@@ -37,6 +37,11 @@
 <body>
   <h2>Fishing Trip Data Logger</h2>
   <form id="fishingForm">
+    
+    <label>Title of Catch:
+  <input type="text" id="title" placeholder="Enter a title or description" />
+    </label>
+    
     <label>Date:
       <input type="date" id="date" required />
     </label>
@@ -67,6 +72,10 @@
 
     <label>Weather:
       <input type="text" id="weather" placeholder="e.g. Clear, 65°F" />
+    </label>
+
+    <label>Description:
+  <input type="text" id="Description" placeholder="Enter any extra information you'd like to add about the catch." />
     </label>
 
     <button type="submit">Add Entry</button>
