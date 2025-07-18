@@ -1,0 +1,112 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fishing Trip Logger</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: auto;
+      padding: 20px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 15px;
+    }
+    #output {
+      white-space: pre-wrap;
+      background: #f0f0f0;
+      padding: 10px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Fishing Trip Data Logger</h2>
+  <form id="fishingForm">
+    <label>Date:
+      <input type="date" id="date" required />
+    </label>
+
+    <label>Time of Catch:
+      <input type="time" id="time" required />
+    </label>
+
+    <label>Location (Lat, Long):
+      <input type="text" id="location" placeholder="e.g. 45.5231, -122.6765" required />
+    </label>
+
+    <label>Tide Stage:
+      <input type="text" id="tideStage" placeholder="e.g. Rising" />
+    </label>
+
+    <label>Tide Height (optional):
+      <input type="text" id="tideHeight" placeholder="e.g. 3.2 ft" />
+    </label>
+
+    <label>Moon Phase:
+      <input type="text" id="moonPhase" placeholder="e.g. Waxing Gibbous" />
+    </label>
+
+    <label>Moon Position:
+      <input type="text" id="moonPosition" placeholder="e.g. 45° above horizon" />
+    </label>
+
+    <label>Weather:
+      <input type="text" id="weather" placeholder="e.g. Clear, 65°F" />
+    </label>
+
+    <button type="submit">Add Entry</button>
+    <button type="button" onclick="exportToExcel()">Download Excel</button>
+  </form>
+
+  <pre id="output"></pre>
+
+  <script>
+    const form = document.getElementById("fishingForm");
+    const output = document.getElementById("output");
+    const entries = [];
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const data = {
+        Date: document.getElementById("date").value,
+        Time: document.getElementById("time").value,
+        Location: document.getElementById("location").value,
+        Tide_Stage: document.getElementById("tideStage").value,
+        Tide_Height: document.getElementById("tideHeight").value,
+        Moon_Phase: document.getElementById("moonPhase").value,
+        Moon_Position: document.getElementById("moonPosition").value,
+        Weather: document.getElementById("weather").value
+      };
+      entries.push(data);
+      output.textContent = `Entry added. Total entries: ${entries.length}`;
+      form.reset();
+    });
+
+    function exportToExcel() {
+      if (entries.length === 0) {
+        alert("No data to export.");
+        return;
+      }
+      const ws = XLSX.utils.json_to_sheet(entries);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Fishing_Trips");
+      XLSX.writeFile(wb, "fishing_trip_log.xlsx");
+    }
+  </script>
+</body>
+</html>
