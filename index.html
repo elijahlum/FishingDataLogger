@@ -82,6 +82,7 @@
         return false;
       }
       // Example: Basic range for Pacific Northwest/Columbia River area
+      // Roughly 45 N to 47 N latitude, -125 W to -121 W longitude
       if (lat < 45 || lat > 47 || lon < -125 || lon > -121) {
         locationError.textContent = "Coordinates are outside the expected range for the Columbia River / Pacific Northwest.";
         return false;
@@ -104,12 +105,32 @@
       return "Unavailable";
     }
 
+    // --- START NOAA Tide API Improvement ---
     async function fetchTideNOAA(stationId, date, time) {
-      const start = new Date(`${date}T${time}`);
-      const startTime = new Date(start.getTime() - 6 * 60 * 60 * 1000);
-      const endTime = new Date(start.getTime() + 6 * 60 * 60 * 1000);
+      // Original catch time from form input
+      const catchTime = new Date(`${date}T${time}`);
 
-      const formatTime = t => t.toISOString().slice(0, 13).replace(/[-T:]/g, '') + '00';
+      // Calculate start and end times for the NOAA query window (6 hours before/after)
+      // Crucially, set minutes/seconds/milliseconds to 0 to align with hourly predictions
+      const startTime = new Date(catchTime.getTime() - 6 * 60 * 60 * 1000);
+      startTime.setMinutes(0);
+      startTime.setSeconds(0);
+      startTime.setMilliseconds(0);
+
+      const endTime = new Date(catchTime.getTime() + 6 * 60 * 60 * 1000);
+      endTime.setMinutes(0);
+      endTime.setSeconds(0);
+      endTime.setMilliseconds(0);
+
+      // Custom formatTime function to ensure YYYYMMDDHH format
+      const formatTime = t => {
+        const year = t.getFullYear().toString();
+        const month = (t.getMonth() + 1).toString().padStart(2, '0');
+        const day = t.getDate().toString().padStart(2, '0');
+        const hour = t.getHours().toString().padStart(2, '0');
+        return `${year}${month}${day}${hour}`;
+      };
+
       const beginDate = formatTime(startTime);
       const endDate = formatTime(endTime);
 
@@ -117,10 +138,15 @@
 
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`NOAA Tide API error: ${res.statusText}`);
+        // Check if the response status is OK (200). If not, read the server's error message.
+        if (!res.ok) {
+            const errorText = await res.text(); // Read the response body for NOAA's specific error
+            console.error("NOAA API returned an error:", errorText);
+            throw new Error(`NOAA Tide API error: ${res.status} ${res.statusText} - ${errorText}`);
+        }
         const data = await res.json();
         if (!data.predictions || data.predictions.length === 0) {
-          return { stage: "Unavailable", chart: "No tide data" };
+          return { stage: "Unavailable", chart: "No tide data for this period/station" };
         }
 
         let mid = new Date(`${date}T${time}`);
@@ -145,6 +171,7 @@
         return { stage: "Unavailable", chart: "Error fetching tide data" };
       }
     }
+    // --- END NOAA Tide API Improvement ---
 
     async function fetchMoon(date) {
       try {
@@ -169,6 +196,7 @@
         const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
         if (!res.ok) throw new Error(`Nominatim API error: ${res.statusText}`);
         const data = await res.json();
+        // Prioritize specific address components, fall back to display_name parts
         return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county || data.display_name.split(',')[0]) || "Unknown";
       } catch (error) {
         console.error("Error fetching place name:", error);
@@ -195,7 +223,6 @@
       let tideStationId;
       const place = await fetchPlaceName(lat, lon); // Fetch place name early to help determine tide station
 
-      // Check if the location is near Prescott Beach for the specific tide station
       // Coordinates for Prescott Beach, OR: ~45.92 N, -122.92 W
       const prescottBeachLat = 45.92;
       const prescottBeachLon = -122.92;
@@ -217,10 +244,12 @@
         console.log("Using specific tide station for Prescott Beach:", tideStationId);
       } else {
         // Your existing fallback logic for other Columbia River locations
+        // 9439040: Astoria (lower Columbia)
+        // 9440422: Vancouver (mid Columbia)
+        // 9439099: Camas (upper Columbia - often has no tide info)
         tideStationId = lat > 46 ? "9439040" : (lat > 45.7 ? "9440422" : "9439099");
         console.log("Using general Columbia River tide station:", tideStationId);
       }
-
 
       const weather = await fetchWeather(lat, lon);
       const tideInfo = await fetchTideNOAA(tideStationId, date, time);
@@ -241,7 +270,7 @@
       };
 
       entries.push(data);
-      output.textContent = `Entry added. Total entries: ${entries.length}\nLast entry's area: ${data.Area_Name}`;
+      output.textContent = `Entry added. Total entries: ${entries.length}\nLast entry's area: ${data.Area_Name}\nLast entry's tide station: ${data.Tide_Station_ID_Used}\nLast entry's tide stage: ${data.Tide_Stage}`;
       form.reset();
     });
 
