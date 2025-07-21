@@ -52,26 +52,6 @@
       <input type="text" id="location" placeholder="e.g. 45.5231, -122.6765" required />
     </label>
 
-    <label>Tide Stage:
-      <input type="text" id="tideStage" placeholder="e.g. Rising" />
-    </label>
-
-    <label>Tide Height (optional):
-      <input type="text" id="tideHeight" placeholder="e.g. 3.2 ft" />
-    </label>
-
-    <label>Moon Phase:
-      <input type="text" id="moonPhase" placeholder="e.g. Waxing Gibbous" />
-    </label>
-
-    <label>Moon Position:
-      <input type="text" id="moonPosition" placeholder="e.g. 45° above horizon" />
-    </label>
-
-    <label>Weather:
-      <input type="text" id="weather" placeholder="e.g. Clear, 65°F" />
-    </label>
-
     <button type="submit">Add Entry</button>
     <button type="button" onclick="exportToExcel()">Download Excel</button>
   </form>
@@ -141,7 +121,6 @@
         Time: document.getElementById("time").value,
         Location: document.getElementById("location").value,
         Tide_Stage: tide,
-        Tide_Height: "", // Now included in Tide_Stage automatically
         Moon_Phase: moon.phase,
         Moon_Position: moon.position,
         Weather: weather
