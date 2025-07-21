@@ -64,7 +64,6 @@
     const entries = [];
 
     const weatherApiKey = "cc3586d4c42cc1e784e39c79dd5fff72";
-    const tideApiKey = "e474bd27-82c9-41c2-b2a2-c01bfd50a122";
     const moonApiKey = "3264359d276642dea6bdb95366fb8896";
 
     async function fetchWeather(lat, lon) {
@@ -77,47 +76,39 @@
       return "Unavailable";
     }
 
-   async function fetchTide(lat, lon, date) {
-  const stationRes = await fetch(`https://api.stormglass.io/v2/tide/stations/closest?lat=${lat}&lng=${lon}`, {
-    headers: { Authorization: tideApiKey }
-  });
-  const stationData = await stationRes.json();
+    async function fetchTideNOAA(stationId, date, time) {
+      const start = new Date(`${date}T${time}`);
+      const startTime = new Date(start.getTime() - 6 * 60 * 60 * 1000);
+      const endTime = new Date(start.getTime() + 6 * 60 * 60 * 1000);
 
-  console.log("Tide station data:", stationData);
+      const formatTime = t => t.toISOString().slice(0, 13).replace(/[-T:]/g, '') + '00';
+      const beginDate = formatTime(startTime);
+      const endDate = formatTime(endTime);
 
-  if (!stationData || !stationData.data || stationData.data.length === 0) return { stage: "Unavailable", station: "Unknown" };
+      const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${stationId}&product=predictions&application=fishing_app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&interval=60&units=english&time_zone=lst_ldt&format=json`;
 
-  const closest = stationData.data[0];
-  const stationLat = closest.latitude;
-  const stationLon = closest.longitude;
-  const stationName = closest.name || "Unknown";
-
-  const tideRes = await fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${stationLat}&lng=${stationLon}&start=${date}`, {
-    headers: { Authorization: tideApiKey }
-  });
-
-  const tideData = await tideRes.json();
-
-  console.log("Tide extremes data:", tideData);
-
-  if (tideData && tideData.data && tideData.data.length > 0) {
-    return {
-      stage: `${tideData.data[0].type} at ${parseFloat(tideData.data[0].height).toFixed(2)} ft`,
-      station: stationName
-    };
-  }
-  return { stage: "Unavailable", station: stationName };
-}
-
-
-      const tideData = await tideRes.json();
-      if (tideData && tideData.data && tideData.data.length > 0) {
-        return {
-          stage: `${tideData.data[0].type} at ${parseFloat(tideData.data[0].height).toFixed(2)} ft`,
-          station: stationName
-        };
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.predictions || data.predictions.length === 0) {
+        return { stage: "Unavailable", chart: "No tide data" };
       }
-      return { stage: "Unavailable", station: stationName };
+
+      let mid = new Date(`${date}T${time}`);
+      const closest = data.predictions.reduce((prev, curr) => {
+        const prevDiff = Math.abs(new Date(prev.t) - mid);
+        const currDiff = Math.abs(new Date(curr.t) - mid);
+        return currDiff < prevDiff ? curr : prev;
+      });
+
+      const idx = data.predictions.findIndex(p => p.t === closest.t);
+      const trend = (idx > 0 && data.predictions[idx].v > data.predictions[idx - 1].v) ? "Rising" : "Falling";
+
+      const chart = data.predictions.map(p => `${p.t.split('T')[1]}: ${p.v} ft`).join('\n');
+
+      return {
+        stage: `${closest.v} ft (${trend})`,
+        chart
+      };
     }
 
     async function fetchMoon(date) {
@@ -136,59 +127,41 @@
     async function fetchPlaceName(lat, lon) {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
       const data = await res.json();
-      return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county) || "Unknown";
+      return data && data.address && data.address.village || data.address.town || data.address.city || data.address.county || "Unknown";
     }
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      output.textContent = "Processing entry...";
+      const loc = document.getElementById("location").value.split(",").map(s => s.trim());
+      const lat = parseFloat(loc[0]);
+      const lon = parseFloat(loc[1]);
+      const date = document.getElementById("date").value;
+      const time = document.getElementById("time").value;
 
-      try {
-        const locInput = document.getElementById("location").value;
-        const loc = locInput.split(",").map(s => s.trim());
-        const lat = parseFloat(loc[0]);
-        const lon = parseFloat(loc[1]);
+      // NOAA station fallback list based on Columbia River
+      const stationId = lat > 46 ? "9439040" : (lat > 45.7 ? "9440422" : "9439099");
 
-        if (isNaN(lat) || isNaN(lon)) {
-          output.textContent = "Please enter valid latitude and longitude separated by a comma.";
-          return;
-        }
+      const weather = await fetchWeather(lat, lon);
+      const tideInfo = await fetchTideNOAA(stationId, date, time);
+      const moon = await fetchMoon(date);
+      const place = await fetchPlaceName(lat, lon);
 
-        const date = document.getElementById("date").value;
+      const data = {
+        Title: document.getElementById("title").value,
+        Date: date,
+        Time: time,
+        Location: `${lat}, ${lon}`,
+        Area_Name: place,
+        Tide_Stage: tideInfo.stage,
+        Tide_Chart: tideInfo.chart,
+        Moon_Phase: moon.phase,
+        Moon_Position: moon.position,
+        Weather: weather
+      };
 
-        output.textContent = "Fetching weather data...";
-        const weather = await fetchWeather(lat, lon);
-
-        output.textContent = "Fetching tide data...";
-        const tideInfo = await fetchTide(lat, lon, date);
-
-        output.textContent = "Fetching moon data...";
-        const moon = await fetchMoon(date);
-
-        output.textContent = "Fetching location name...";
-        const place = await fetchPlaceName(lat, lon);
-
-        const data = {
-          Title: document.getElementById("title").value,
-          Date: date,
-          Time: document.getElementById("time").value,
-          Location: locInput,
-          Area_Name: place,
-          Tide_Stage: tideInfo.stage,
-          Tide_Station: tideInfo.station,
-          Moon_Phase: moon.phase,
-          Moon_Position: moon.position,
-          Weather: weather
-        };
-
-        entries.push(data);
-        output.textContent = `Entry added successfully! Total entries: ${entries.length}`;
-        form.reset();
-
-      } catch (err) {
-        console.error("Error adding entry:", err);
-        output.textContent = `Error: ${err.message}`;
-      }
+      entries.push(data);
+      output.textContent = `Entry added. Total entries: ${entries.length}`;
+      form.reset();
     });
 
     function exportToExcel() {
