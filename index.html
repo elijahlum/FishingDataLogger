@@ -31,6 +31,11 @@
       padding: 10px;
       margin-top: 20px;
     }
+    .error {
+      color: red;
+      font-size: 0.9em;
+      margin-top: 5px;
+    }
   </style>
 </head>
 <body>
@@ -50,6 +55,7 @@
 
     <label>Location (Lat, Long):
       <input type="text" id="location" placeholder="e.g. 45.5231, -122.6765" required />
+      <div id="locationError" class="error"></div>
     </label>
 
     <button type="submit">Add Entry</button>
@@ -61,17 +67,39 @@
   <script>
     const form = document.getElementById("fishingForm");
     const output = document.getElementById("output");
+    const locationError = document.getElementById("locationError");
     const entries = [];
 
     const weatherApiKey = "cc3586d4c42cc1e784e39c79dd5fff72";
     const moonApiKey = "3264359d276642dea6bdb95366fb8896";
 
+    // Function to validate latitude and longitude
+    function validateCoordinates(lat, lon) {
+      locationError.textContent = ''; // Clear previous errors
+
+      if (isNaN(lat) || isNaN(lon)) {
+        locationError.textContent = "Latitude and Longitude must be numbers.";
+        return false;
+      }
+      // Example: Basic range for Pacific Northwest/Columbia River area
+      if (lat < 45 || lat > 47 || lon < -125 || lon > -121) {
+        locationError.textContent = "Coordinates are outside the expected range for the Columbia River / Pacific Northwest.";
+        return false;
+      }
+      return true;
+    }
+
     async function fetchWeather(lat, lon) {
-      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=${weatherApiKey}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data && data.weather && data.weather[0] && data.main) {
-        return `${data.weather[0].main}, ${data.main.temp}°F`;
+      try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=${weatherApiKey}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Weather API error: ${res.statusText}`);
+        const data = await res.json();
+        if (data && data.weather && data.weather[0] && data.main) {
+          return `${data.weather[0].main}, ${data.main.temp}°F`;
+        }
+      } catch (error) {
+        console.error("Error fetching weather:", error);
       }
       return "Unavailable";
     }
@@ -87,64 +115,116 @@
 
       const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${stationId}&product=predictions&application=fishing_app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&interval=60&units=english&time_zone=lst_ldt&format=json`;
 
-      const res = await fetch(url);
-      const data = await res.json();
-      if (!data.predictions || data.predictions.length === 0) {
-        return { stage: "Unavailable", chart: "No tide data" };
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`NOAA Tide API error: ${res.statusText}`);
+        const data = await res.json();
+        if (!data.predictions || data.predictions.length === 0) {
+          return { stage: "Unavailable", chart: "No tide data" };
+        }
+
+        let mid = new Date(`${date}T${time}`);
+        const closest = data.predictions.reduce((prev, curr) => {
+          const prevDiff = Math.abs(new Date(prev.t) - mid);
+          const currDiff = Math.abs(new Date(curr.t) - mid);
+          return currDiff < prevDiff ? curr : prev;
+        });
+
+        const idx = data.predictions.findIndex(p => p.t === closest.t);
+        // Ensure there's a previous data point to compare for trend
+        const trend = (idx > 0 && data.predictions[idx].v > data.predictions[idx - 1].v) ? "Rising" : "Falling";
+
+        const chart = data.predictions.map(p => `${p.t.split('T')[1]}: ${p.v} ft`).join('\n');
+
+        return {
+          stage: `${closest.v} ft (${trend})`,
+          chart
+        };
+      } catch (error) {
+        console.error("Error fetching tide data:", error);
+        return { stage: "Unavailable", chart: "Error fetching tide data" };
       }
-
-      let mid = new Date(`${date}T${time}`);
-      const closest = data.predictions.reduce((prev, curr) => {
-        const prevDiff = Math.abs(new Date(prev.t) - mid);
-        const currDiff = Math.abs(new Date(curr.t) - mid);
-        return currDiff < prevDiff ? curr : prev;
-      });
-
-      const idx = data.predictions.findIndex(p => p.t === closest.t);
-      const trend = (idx > 0 && data.predictions[idx].v > data.predictions[idx - 1].v) ? "Rising" : "Falling";
-
-      const chart = data.predictions.map(p => `${p.t.split('T')[1]}: ${p.v} ft`).join('\n');
-
-      return {
-        stage: `${closest.v} ft (${trend})`,
-        chart
-      };
     }
 
     async function fetchMoon(date) {
-      const url = `https://api.ipgeolocation.io/astronomy?apiKey=${moonApiKey}&date=${date}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data && data.moon_phase && data.moon_altitude) {
-        return {
-          phase: data.moon_phase,
-          position: `${data.moon_altitude}° altitude`
-        };
+      try {
+        const url = `https://api.ipgeolocation.io/astronomy?apiKey=${moonApiKey}&date=${date}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Moon API error: ${res.statusText}`);
+        const data = await res.json();
+        if (data && data.moon_phase && data.moon_altitude) {
+          return {
+            phase: data.moon_phase,
+            position: `${data.moon_altitude}° altitude`
+          };
+        }
+      } catch (error) {
+        console.error("Error fetching moon data:", error);
       }
       return { phase: "Unavailable", position: "Unavailable" };
     }
 
     async function fetchPlaceName(lat, lon) {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
-      const data = await res.json();
-      return data && data.address && data.address.village || data.address.town || data.address.city || data.address.county || "Unknown";
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+        if (!res.ok) throw new Error(`Nominatim API error: ${res.statusText}`);
+        const data = await res.json();
+        return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county || data.display_name.split(',')[0]) || "Unknown";
+      } catch (error) {
+        console.error("Error fetching place name:", error);
+        return "Unknown";
+      }
     }
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      output.textContent = "Fetching data..."; // Provide immediate feedback
+
       const loc = document.getElementById("location").value.split(",").map(s => s.trim());
       const lat = parseFloat(loc[0]);
       const lon = parseFloat(loc[1]);
       const date = document.getElementById("date").value;
       const time = document.getElementById("time").value;
 
-      // NOAA station fallback list based on Columbia River
-      const stationId = lat > 46 ? "9439040" : (lat > 45.7 ? "9440422" : "9439099");
+      // Validate coordinates first
+      if (!validateCoordinates(lat, lon)) {
+        output.textContent = "Please correct the location input.";
+        return;
+      }
+
+      let tideStationId;
+      const place = await fetchPlaceName(lat, lon); // Fetch place name early to help determine tide station
+
+      // Check if the location is near Prescott Beach for the specific tide station
+      // Coordinates for Prescott Beach, OR: ~45.92 N, -122.92 W
+      const prescottBeachLat = 45.92;
+      const prescottBeachLon = -122.92;
+      const distanceThresholdKm = 10; // 10 km radius for "near Prescott Beach"
+
+      // Simple Haversine distance for approximation
+      const R = 6371; // Radius of Earth in kilometers
+      const dLat = (lat - prescottBeachLat) * Math.PI / 180;
+      const dLon = (lon - prescottBeachLon) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(prescottBeachLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c; // Distance in km
+
+      if (distance <= distanceThresholdKm) {
+        tideStationId = "9437908"; // NOAA Station ID for Longview (Tide), near Prescott Beach
+        console.log("Using specific tide station for Prescott Beach:", tideStationId);
+      } else {
+        // Your existing fallback logic for other Columbia River locations
+        tideStationId = lat > 46 ? "9439040" : (lat > 45.7 ? "9440422" : "9439099");
+        console.log("Using general Columbia River tide station:", tideStationId);
+      }
+
 
       const weather = await fetchWeather(lat, lon);
-      const tideInfo = await fetchTideNOAA(stationId, date, time);
+      const tideInfo = await fetchTideNOAA(tideStationId, date, time);
       const moon = await fetchMoon(date);
-      const place = await fetchPlaceName(lat, lon);
 
       const data = {
         Title: document.getElementById("title").value,
@@ -152,6 +232,7 @@
         Time: time,
         Location: `${lat}, ${lon}`,
         Area_Name: place,
+        Tide_Station_ID_Used: tideStationId, // Add this for transparency
         Tide_Stage: tideInfo.stage,
         Tide_Chart: tideInfo.chart,
         Moon_Phase: moon.phase,
@@ -160,7 +241,7 @@
       };
 
       entries.push(data);
-      output.textContent = `Entry added. Total entries: ${entries.length}`;
+      output.textContent = `Entry added. Total entries: ${entries.length}\nLast entry's area: ${data.Area_Name}`;
       form.reset();
     });
 
