@@ -78,17 +78,30 @@
     }
 
     async function fetchTide(lat, lon, date) {
-      const url = `https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lon}&start=${date}`;
-      const res = await fetch(url, {
-        headers: {
-          Authorization: tideApiKey
-        }
+      const stationRes = await fetch(`https://api.stormglass.io/v2/tide/stations/closest?lat=${lat}&lng=${lon}`, {
+        headers: { Authorization: tideApiKey }
       });
-      const data = await res.json();
-      if (data && data.data && data.data.length > 0) {
-        return `${data.data[0].type} at ${parseFloat(data.data[0].height).toFixed(2)} ft`;
+      const stationData = await stationRes.json();
+
+      if (!stationData || !stationData.data || stationData.data.length === 0) return { stage: "Unavailable", station: "Unknown" };
+
+      const closest = stationData.data[0];
+      const stationLat = closest.latitude;
+      const stationLon = closest.longitude;
+      const stationName = closest.name || "Unknown";
+
+      const tideRes = await fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${stationLat}&lng=${stationLon}&start=${date}`, {
+        headers: { Authorization: tideApiKey }
+      });
+
+      const tideData = await tideRes.json();
+      if (tideData && tideData.data && tideData.data.length > 0) {
+        return {
+          stage: `${tideData.data[0].type} at ${parseFloat(tideData.data[0].height).toFixed(2)} ft`,
+          station: stationName
+        };
       }
-      return "Unavailable";
+      return { stage: "Unavailable", station: stationName };
     }
 
     async function fetchMoon(date) {
@@ -104,6 +117,12 @@
       return { phase: "Unavailable", position: "Unavailable" };
     }
 
+    async function fetchPlaceName(lat, lon) {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+      const data = await res.json();
+      return data && data.address && data.address.village || data.address.town || data.address.city || data.address.county || "Unknown";
+    }
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const loc = document.getElementById("location").value.split(",").map(s => s.trim());
@@ -112,15 +131,18 @@
       const date = document.getElementById("date").value;
 
       const weather = await fetchWeather(lat, lon);
-      const tide = await fetchTide(lat, lon, date);
+      const tideInfo = await fetchTide(lat, lon, date);
       const moon = await fetchMoon(date);
+      const place = await fetchPlaceName(lat, lon);
 
       const data = {
         Title: document.getElementById("title").value,
         Date: date,
         Time: document.getElementById("time").value,
         Location: document.getElementById("location").value,
-        Tide_Stage: tide,
+        Area_Name: place,
+        Tide_Stage: tideInfo.stage,
+        Tide_Station: tideInfo.station,
         Moon_Phase: moon.phase,
         Moon_Position: moon.position,
         Weather: weather
