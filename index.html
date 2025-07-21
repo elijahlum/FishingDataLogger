@@ -120,37 +120,59 @@
     async function fetchPlaceName(lat, lon) {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
       const data = await res.json();
-      return data && data.address && data.address.village || data.address.town || data.address.city || data.address.county || "Unknown";
+      return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county) || "Unknown";
     }
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const loc = document.getElementById("location").value.split(",").map(s => s.trim());
-      const lat = parseFloat(loc[0]);
-      const lon = parseFloat(loc[1]);
-      const date = document.getElementById("date").value;
+      output.textContent = "Processing entry...";
 
-      const weather = await fetchWeather(lat, lon);
-      const tideInfo = await fetchTide(lat, lon, date);
-      const moon = await fetchMoon(date);
-      const place = await fetchPlaceName(lat, lon);
+      try {
+        const locInput = document.getElementById("location").value;
+        const loc = locInput.split(",").map(s => s.trim());
+        const lat = parseFloat(loc[0]);
+        const lon = parseFloat(loc[1]);
 
-      const data = {
-        Title: document.getElementById("title").value,
-        Date: date,
-        Time: document.getElementById("time").value,
-        Location: document.getElementById("location").value,
-        Area_Name: place,
-        Tide_Stage: tideInfo.stage,
-        Tide_Station: tideInfo.station,
-        Moon_Phase: moon.phase,
-        Moon_Position: moon.position,
-        Weather: weather
-      };
+        if (isNaN(lat) || isNaN(lon)) {
+          output.textContent = "Please enter valid latitude and longitude separated by a comma.";
+          return;
+        }
 
-      entries.push(data);
-      output.textContent = `Entry added. Total entries: ${entries.length}`;
-      form.reset();
+        const date = document.getElementById("date").value;
+
+        output.textContent = "Fetching weather data...";
+        const weather = await fetchWeather(lat, lon);
+
+        output.textContent = "Fetching tide data...";
+        const tideInfo = await fetchTide(lat, lon, date);
+
+        output.textContent = "Fetching moon data...";
+        const moon = await fetchMoon(date);
+
+        output.textContent = "Fetching location name...";
+        const place = await fetchPlaceName(lat, lon);
+
+        const data = {
+          Title: document.getElementById("title").value,
+          Date: date,
+          Time: document.getElementById("time").value,
+          Location: locInput,
+          Area_Name: place,
+          Tide_Stage: tideInfo.stage,
+          Tide_Station: tideInfo.station,
+          Moon_Phase: moon.phase,
+          Moon_Position: moon.position,
+          Weather: weather
+        };
+
+        entries.push(data);
+        output.textContent = `Entry added successfully! Total entries: ${entries.length}`;
+        form.reset();
+
+      } catch (err) {
+        console.error("Error adding entry:", err);
+        output.textContent = `Error: ${err.message}`;
+      }
     });
 
     function exportToExcel() {
