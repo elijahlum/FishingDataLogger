@@ -77,22 +77,38 @@
       return "Unavailable";
     }
 
-    async function fetchTide(lat, lon, date) {
-      const stationRes = await fetch(`https://api.stormglass.io/v2/tide/stations/closest?lat=${lat}&lng=${lon}`, {
-        headers: { Authorization: tideApiKey }
-      });
-      const stationData = await stationRes.json();
+   async function fetchTide(lat, lon, date) {
+  const stationRes = await fetch(`https://api.stormglass.io/v2/tide/stations/closest?lat=${lat}&lng=${lon}`, {
+    headers: { Authorization: tideApiKey }
+  });
+  const stationData = await stationRes.json();
 
-      if (!stationData || !stationData.data || stationData.data.length === 0) return { stage: "Unavailable", station: "Unknown" };
+  console.log("Tide station data:", stationData);
 
-      const closest = stationData.data[0];
-      const stationLat = closest.latitude;
-      const stationLon = closest.longitude;
-      const stationName = closest.name || "Unknown";
+  if (!stationData || !stationData.data || stationData.data.length === 0) return { stage: "Unavailable", station: "Unknown" };
 
-      const tideRes = await fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${stationLat}&lng=${stationLon}&start=${date}`, {
-        headers: { Authorization: tideApiKey }
-      });
+  const closest = stationData.data[0];
+  const stationLat = closest.latitude;
+  const stationLon = closest.longitude;
+  const stationName = closest.name || "Unknown";
+
+  const tideRes = await fetch(`https://api.stormglass.io/v2/tide/extremes/point?lat=${stationLat}&lng=${stationLon}&start=${date}`, {
+    headers: { Authorization: tideApiKey }
+  });
+
+  const tideData = await tideRes.json();
+
+  console.log("Tide extremes data:", tideData);
+
+  if (tideData && tideData.data && tideData.data.length > 0) {
+    return {
+      stage: `${tideData.data[0].type} at ${parseFloat(tideData.data[0].height).toFixed(2)} ft`,
+      station: stationName
+    };
+  }
+  return { stage: "Unavailable", station: stationName };
+}
+
 
       const tideData = await tideRes.json();
       if (tideData && tideData.data && tideData.data.length > 0) {
