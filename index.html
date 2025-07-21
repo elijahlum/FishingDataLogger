@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,11 +36,10 @@
 <body>
   <h2>Fishing Trip Data Logger</h2>
   <form id="fishingForm">
-    
     <label>Title of Catch:
-  <input type="text" id="title" placeholder="Enter a title or description" />
+      <input type="text" id="title" placeholder="e.g. Chinook Salmon" required />
     </label>
-    
+
     <label>Date:
       <input type="date" id="date" required />
     </label>
@@ -74,10 +72,6 @@
       <input type="text" id="weather" placeholder="e.g. Clear, 65°F" />
     </label>
 
-    <label>Description:
-  <input type="text" id="Description" placeholder="Enter any extra information you'd like to add about the catch." />
-    </label>
-
     <button type="submit">Add Entry</button>
     <button type="button" onclick="exportToExcel()">Download Excel</button>
   </form>
@@ -89,18 +83,70 @@
     const output = document.getElementById("output");
     const entries = [];
 
-    form.addEventListener("submit", (e) => {
+    const weatherApiKey = "cc3586d4c42cc1e784e39c79dd5fff72";
+    const tideApiKey = "e474bd27-82c9-41c2-b2a2-c01bfd50a122";
+    const moonApiKey = "3264359d276642dea6bdb95366fb8896";
+
+    async function fetchWeather(lat, lon) {
+      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=imperial&appid=${weatherApiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.weather && data.weather[0] && data.main) {
+        return `${data.weather[0].main}, ${data.main.temp}°F`;
+      }
+      return "Unavailable";
+    }
+
+    async function fetchTide(lat, lon, date) {
+      const url = `https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lon}&start=${date}`;
+      const res = await fetch(url, {
+        headers: {
+          Authorization: tideApiKey
+        }
+      });
+      const data = await res.json();
+      if (data && data.data && data.data.length > 0) {
+        return `${data.data[0].type} at ${parseFloat(data.data[0].height).toFixed(2)} ft`;
+      }
+      return "Unavailable";
+    }
+
+    async function fetchMoon(date) {
+      const url = `https://api.ipgeolocation.io/astronomy?apiKey=${moonApiKey}&date=${date}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.moon_phase && data.moon_altitude) {
+        return {
+          phase: data.moon_phase,
+          position: `${data.moon_altitude}° altitude`
+        };
+      }
+      return { phase: "Unavailable", position: "Unavailable" };
+    }
+
+    form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      const loc = document.getElementById("location").value.split(",").map(s => s.trim());
+      const lat = parseFloat(loc[0]);
+      const lon = parseFloat(loc[1]);
+      const date = document.getElementById("date").value;
+
+      const weather = await fetchWeather(lat, lon);
+      const tide = await fetchTide(lat, lon, date);
+      const moon = await fetchMoon(date);
+
       const data = {
-        Date: document.getElementById("date").value,
+        Title: document.getElementById("title").value,
+        Date: date,
         Time: document.getElementById("time").value,
         Location: document.getElementById("location").value,
-        Tide_Stage: document.getElementById("tideStage").value,
-        Tide_Height: document.getElementById("tideHeight").value,
-        Moon_Phase: document.getElementById("moonPhase").value,
-        Moon_Position: document.getElementById("moonPosition").value,
-        Weather: document.getElementById("weather").value
+        Tide_Stage: tide,
+        Tide_Height: "", // Now included in Tide_Stage automatically
+        Moon_Phase: moon.phase,
+        Moon_Position: moon.position,
+        Weather: weather
       };
+
       entries.push(data);
       output.textContent = `Entry added. Total entries: ${entries.length}`;
       form.reset();
