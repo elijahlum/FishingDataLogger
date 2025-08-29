@@ -7,59 +7,59 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 body {
-font-family: Arial, sans-serif;
-max-width: 700px;
-margin: auto;
-padding: 20px;
+  font-family: Arial, sans-serif;
+  max-width: 700px;
+  margin: auto;
+  padding: 20px;
 }
 label {
-display: block;
-margin-top: 10px;
+  display: block;
+  margin-top: 10px;
 }
 input, select, textarea, button {
-width: 100%;
-padding: 8px;
-margin-top: 5px;
-box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  margin-top: 5px;
+  box-sizing: border-box;
 }
 button {
-margin-top: 15px;
+  margin-top: 15px;
 }
 #output {
-white-space: pre-wrap;
-background: #f0f0f0;
-padding: 10px;
-margin-top: 20px;
+  white-space: pre-wrap;
+  background: #f0f0f0;
+  padding: 10px;
+  margin-top: 20px;
 }
 .error {
-color: red;
-font-size: 0.9em;
-margin-top: 5px;
+  color: red;
+  font-size: 0.9em;
+  margin-top: 5px;
 }
 </style>
 </head>
 <body>
 <h2>Fishing Trip Data Logger</h2>
 <form id="fishingForm">
-<label>Title of Catch:
-<input type="text" id="title" placeholder="e.g. Chinook Salmon" required />
-</label>
+  <label>Title of Catch:
+    <input type="text" id="title" placeholder="e.g. Chinook Salmon" required />
+  </label>
 
-<label>Date:
-<input type="date" id="date" required />
-</label>
+  <label>Date:
+    <input type="date" id="date" required />
+  </label>
 
-<label>Time of Catch:
-<input type="time" id="time" required />
-</label>
+  <label>Time of Catch:
+    <input type="time" id="time" required />
+  </label>
 
-<label>Location (Lat, Long):
-<input type="text" id="location" placeholder="e.g. 45.5231, -122.6765" required />
-<div id="locationError" class="error"></div>
-</label>
+  <label>Location (Lat, Long):
+    <input type="text" id="location" placeholder="e.g. 45.5231, -122.6765" required />
+    <div id="locationError" class="error"></div>
+  </label>
 
-<button type="submit">Add Entry</button>
-<button type="button" onclick="exportToExcel()">Download Excel</button>
+  <button type="submit">Add Entry</button>
+  <button type="button" onclick="exportToExcel()">Download Excel</button>
 </form>
 
 <pre id="output"></pre>
@@ -75,160 +75,189 @@ const moonApiKey = "3264359d276642dea6bdb95366fb8896";
 
 // Validate Coordinates
 function validateCoordinates(lat, lon) {
-locationError.textContent = '';
-if (isNaN(lat) || isNaN(lon)) {
-locationError.textContent = "Latitude and Longitude must be numbers.";
-return false;
-}
-if (lat < 45 || lat > 47 || lon < -125 || lon > -121) {
-locationError.textContent = "Coordinates are outside the expected range for the Columbia River / Pacific Northwest.";
-return false;
-}
-return true;
+  locationError.textContent = '';
+  if (isNaN(lat) || isNaN(lon)) {
+    locationError.textContent = "Latitude and Longitude must be numbers.";
+    return false;
+  }
+  if (lat < 45 || lat > 47 || lon < -125 || lon > -121) {
+    locationError.textContent = "Coordinates are outside the expected range for the Columbia River / PNW.";
+    return false;
+  }
+  return true;
 }
 
 // Fetch Place Name
 async function fetchPlaceName(lat, lon) {
-try {
-const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
-if (!res.ok) throw new Error(`Nominatim API error: ${res.statusText}`);
-const data = await res.json();
-return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county || data.display_name.split(',')[0]) || "Unknown";
-} catch (error) {
-console.error("Error fetching place name:", error);
-return "Unknown";
-}
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+    if (!res.ok) throw new Error(`Nominatim API error: ${res.statusText}`);
+    const data = await res.json();
+    return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county || data.display_name.split(',')[0]) || "Unknown";
+  } catch (error) {
+    console.error("Error fetching place name:", error);
+    return "Unknown";
+  }
 }
 
 // Fetch Weather (Current)
 async function fetchWeather(lat, lon) {
-try {
-const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=imperial`);
-if (!res.ok) throw new Error(`Weather API error: ${res.statusText}`);
-const data = await res.json();
-return { temp: data.main.temp, condition: data.weather[0].description };
-} catch (error) {
-console.error("Error fetching weather:", error);
-return { temp: "Unavailable", condition: "Unavailable" };
-}
+  try {
+    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=imperial`);
+    if (!res.ok) throw new Error(`Weather API error: ${res.statusText}`);
+    const data = await res.json();
+    return { temp: data.main.temp, condition: data.weather[0].description };
+  } catch (error) {
+    console.error("Error fetching weather:", error);
+    return { temp: "Unavailable", condition: "Unavailable" };
+  }
 }
 
-// Fetch Barometric Pressure Trend
+// NOAA Stations for Pressure & Tide
+const noaaStations = [
+  { id: "727930-24234", name: "Portland, OR", lat: 45.63, lon: -122.67, tideStation: "9440422" },
+  { id: "727980-24233", name: "Vancouver, WA", lat: 45.63, lon: -122.68, tideStation: "9440422" },
+  { id: "727950-24239", name: "Longview, WA", lat: 46.14, lon: -122.95, tideStation: "9439040" },
+  // add more stations as needed
+];
+
+// Find nearest station
+function nearestNOAAStation(lat, lon) {
+  let closest = noaaStations[0];
+  let minDist = Infinity;
+  noaaStations.forEach(s => {
+    const dist = Math.sqrt((lat - s.lat) ** 2 + (lon - s.lon) ** 2);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = s;
+    }
+  });
+  return closest;
+}
+
+// Fetch Barometric Pressure (NOAA)
 async function fetchBarometricPressure(lat, lon, date, time) {
-try {
-const currentRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric`);
-const currentData = await currentRes.json();
-const currentPressure = currentData.main.pressure;
+  try {
+    const station = nearestNOAAStation(lat, lon);
+    const catchTime = new Date(`${date}T${time}`);
+    const sixHoursAgo = new Date(catchTime.getTime() - 6 * 60 * 60 * 1000);
 
-const catchTime = new Date(`${date}T${time}`);
-const sixHoursAgo = Math.floor((catchTime.getTime() - 6 * 60 * 60 * 1000) / 1000);
+    const startDate = sixHoursAgo.toISOString().slice(0, 13) + ":00";
+    const endDate = catchTime.toISOString().slice(0, 13) + ":00";
 
-const historyRes = await fetch(`https://api.openweathermap.org/data/3.0/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${sixHoursAgo}&appid=${weatherApiKey}&units=metric`);
-const historyData = await historyRes.json();
-const pastPressure = historyData.current.pressure;
+    const url = `https://www.ncei.noaa.gov/access/services/data/v1?dataset=hourly-isd&stations=${station.id}&startDate=${startDate}&endDate=${endDate}&dataTypes=BARO&units=metric&format=json`;
 
-const diff = currentPressure - pastPressure;
-let trend = "Stable";
-if (diff > 0) trend = `Rising by ${diff} hPa`;
-if (diff < 0) trend = `Falling by ${Math.abs(diff)} hPa`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`NOAA API error: ${res.statusText}`);
+    const data = await res.json();
 
-return { current: currentPressure, past: pastPressure, trend: trend };
-} catch (error) {
-console.error("Error fetching pressure:", error);
-return { current: "Unavailable", past: "Unavailable", trend: "Unavailable" };
-}
+    if (!data || data.length < 2) {
+      return { current: "Unavailable", past: "Unavailable", trend: "Unavailable" };
+    }
+
+    const pastPressure = parseFloat(data[0].BARO);
+    const currentPressure = parseFloat(data[data.length - 1].BARO);
+    const diff = currentPressure - pastPressure;
+
+    let trend = "Stable";
+    if (diff > 0) trend = `Rising by ${diff.toFixed(1)} hPa`;
+    if (diff < 0) trend = `Falling by ${Math.abs(diff).toFixed(1)} hPa`;
+
+    return { current: currentPressure.toFixed(1), past: pastPressure.toFixed(1), trend, tideStationId: station.tideStation };
+  } catch (error) {
+    console.error("Error fetching NOAA pressure data:", error);
+    return { current: "Unavailable", past: "Unavailable", trend: "Unavailable", tideStationId: "9439040" };
+  }
 }
 
 // Fetch Moon Phase
-async function fetchMoon(date) {
-try {
-const res = await fetch(`https://api.ipgeolocation.io/astronomy?apiKey=${moonApiKey}&date=${date}&location=Prescott Beach, OR`);
-if (!res.ok) throw new Error(`Moon API error: ${res.statusText}`);
-const data = await res.json();
-return data.moon_phase || "Unavailable";
-} catch (error) {
-console.error("Error fetching moon phase:", error);
-return "Unavailable";
-}
+async function fetchMoon(lat, lon, date) {
+  try {
+    const res = await fetch(`https://api.ipgeolocation.io/astronomy?apiKey=${moonApiKey}&lat=${lat}&long=${lon}&date=${date}`);
+    if (!res.ok) throw new Error(`Moon API error: ${res.statusText}`);
+    const data = await res.json();
+    return data.moon_phase || "Unavailable";
+  } catch (error) {
+    console.error("Error fetching moon phase:", error);
+    return "Unavailable";
+  }
 }
 
 // Fetch Tide Data (NOAA)
 async function fetchTideNOAA(stationId, date, time) {
-const catchTime = new Date(`${date}T${time}`);
-const startTime = new Date(catchTime.getTime() - 6 * 60 * 60 * 1000);
-startTime.setMinutes(0, 0, 0);
-const endTime = new Date(catchTime.getTime() + 6 * 60 * 60 * 1000);
-endTime.setMinutes(0, 0, 0);
+  const catchTime = new Date(`${date}T${time}`);
+  const startTime = new Date(catchTime.getTime() - 6 * 60 * 60 * 1000);
+  startTime.setMinutes(0, 0, 0);
+  const endTime = new Date(catchTime.getTime() + 6 * 60 * 60 * 1000);
+  endTime.setMinutes(0, 0, 0);
 
-const formatTime = t => t.toISOString().slice(0, 13).replace(/[-T:]/g, '') + '00';
-const beginDate = formatTime(startTime);
-const endDate = formatTime(endTime);
+  const formatTime = t => t.toISOString().slice(0, 13).replace(/[-T:]/g, '') + '00';
+  const beginDate = formatTime(startTime);
+  const endDate = formatTime(endTime);
 
-const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${stationId}&product=predictions&application=fishing_app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&interval=60&units=english&time_zone=lst_ldt&format=json`;
+  const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${stationId}&product=predictions&application=fishing_app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&interval=60&units=english&time_zone=lst_ldt&format=json`;
 
-try {
-const res = await fetch(url);
-if (!res.ok) throw new Error(`NOAA Tide API error: ${res.statusText}`);
-const data = await res.json();
-if (!data.predictions || data.predictions.length === 0) return { stage: "Unavailable", chart: "No tide data" };
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`NOAA Tide API error: ${res.statusText}`);
+    const data = await res.json();
+    if (!data.predictions || data.predictions.length === 0) return { stage: "Unavailable", chart: "No tide data" };
 
-const mid = catchTime.getHours();
-const tideStage = data.predictions.find(p => new Date(p.t).getHours() === mid);
-return { stage: tideStage ? `${tideStage.v} ft` : "Approximate", chart: "Fetched" };
-} catch (error) {
-console.error("Error fetching tide data:", error);
-return { stage: "Unavailable", chart: "Error fetching tide data" };
-}
+    const mid = catchTime.getHours();
+    const tideStage = data.predictions.find(p => new Date(p.t).getHours() === mid);
+    return { stage: tideStage ? `${tideStage.v} ft` : "Approximate", chart: "Fetched" };
+  } catch (error) {
+    console.error("Error fetching tide data:", error);
+    return { stage: "Unavailable", chart: "Error fetching tide data" };
+  }
 }
 
 // Submit Form
 form.addEventListener("submit", async e => {
-e.preventDefault();
-const title = document.getElementById("title").value;
-const date = document.getElementById("date").value;
-const time = document.getElementById("time").value;
-const location = document.getElementById("location").value.split(",");
-const lat = parseFloat(location[0]);
-const lon = parseFloat(location[1]);
+  e.preventDefault();
+  const title = document.getElementById("title").value;
+  const date = document.getElementById("date").value;
+  const time = document.getElementById("time").value;
+  const location = document.getElementById("location").value.split(",").map(s => s.trim());
+  const lat = parseFloat(location[0]);
+  const lon = parseFloat(location[1]);
 
-if (!validateCoordinates(lat, lon)) return;
+  if (!validateCoordinates(lat, lon)) return;
 
-const place = await fetchPlaceName(lat, lon);
-const tideStationId = (Math.abs(lat - 45.92) < 0.05 && Math.abs(lon - -122.92) < 0.05) ? "9440422" : "9439040";
+  const place = await fetchPlaceName(lat, lon);
+  const pressure = await fetchBarometricPressure(lat, lon, date, time);
+  const weather = await fetchWeather(lat, lon);
+  const tideInfo = await fetchTideNOAA(pressure.tideStationId, date, time);
+  const moon = await fetchMoon(lat, lon, date);
 
-const weather = await fetchWeather(lat, lon);
-const tideInfo = await fetchTideNOAA(tideStationId, date, time);
-const moon = await fetchMoon(date);
-const pressure = await fetchBarometricPressure(lat, lon, date, time);
+  const data = {
+    Title: title,
+    Date: date,
+    Time: time,
+    Latitude: lat,
+    Longitude: lon,
+    Area_Name: place,
+    Weather_Temp: `${weather.temp} °F`,
+    Weather_Condition: weather.condition,
+    Tide_Station_ID_Used: pressure.tideStationId,
+    Tide_Stage: tideInfo.stage,
+    Moon_Phase: moon,
+    Barometric_Current: `${pressure.current} hPa`,
+    Barometric_6hrs_Ago: `${pressure.past} hPa`,
+    Barometric_Pressure_Trend: pressure.trend
+  };
 
-const data = {
-Title: title,
-Date: date,
-Time: time,
-Latitude: lat,
-Longitude: lon,
-Area_Name: place,
-Weather_Temp: `${weather.temp} °F`,
-Weather_Condition: weather.condition,
-Tide_Station_ID_Used: tideStationId,
-Tide_Stage: tideInfo.stage,
-Moon_Phase: moon,
-Barometric_Current: `${pressure.current} hPa`,
-Barometric_6hrs_Ago: `${pressure.past} hPa`,
-Barometric_Pressure_Trend: pressure.trend
-};
-
-entries.push(data);
-output.textContent = `Entry added. Total entries: ${entries.length}\nLast entry's area: ${data.Area_Name}\nLast entry's pressure trend: ${data.Barometric_Pressure_Trend}`;
-form.reset();
+  entries.push(data);
+  output.textContent = `Entry added. Total entries: ${entries.length}\nLast entry's area: ${data.Area_Name}\nLast entry's pressure trend: ${data.Barometric_Pressure_Trend}`;
+  form.reset();
 });
 
 // Export to Excel
 function exportToExcel() {
-const ws = XLSX.utils.json_to_sheet(entries);
-const wb = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
-XLSX.writeFile(wb, "fishing_log.xlsx");
+  const ws = XLSX.utils.json_to_sheet(entries);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
+  XLSX.writeFile(wb, "fishing_log.xlsx");
 }
 </script>
 </body>
