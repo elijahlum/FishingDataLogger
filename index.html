@@ -1,122 +1,235 @@
-// Fishing Trip Logger - Prescott Beach Version with Moon, Tide, Weather, Barometric Pressure, and Excel Logging
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fishing Trip Logger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+body {
+font-family: Arial, sans-serif;
+max-width: 700px;
+margin: auto;
+padding: 20px;
+}
+label {
+display: block;
+margin-top: 10px;
+}
+input, select, textarea, button {
+width: 100%;
+padding: 8px;
+margin-top: 5px;
+box-sizing: border-box;
+}
+button {
+margin-top: 15px;
+}
+#output {
+white-space: pre-wrap;
+background: #f0f0f0;
+padding: 10px;
+margin-top: 20px;
+}
+.error {
+color: red;
+font-size: 0.9em;
+margin-top: 5px;
+}
+</style>
+</head>
+<body>
+<h2>Fishing Trip Data Logger</h2>
+<form id="fishingForm">
+<label>Title of Catch:
+<input type="text" id="title" placeholder="e.g. Chinook Salmon" required />
+</label>
 
-const locationOptions = {
-  "Prescott Beach": {
-    name: "Prescott Beach",
-    coords: { lat: 46.1, lon: -122.9 },
-    stationId: "9440422" // NOAA tide station - Longview, WA
-  }
+<label>Date:
+<input type="date" id="date" required />
+</label>
+
+<label>Time of Catch:
+<input type="time" id="time" required />
+</label>
+
+<label>Location (Lat, Long):
+<input type="text" id="location" placeholder="e.g. 45.5231, -122.6765" required />
+<div id="locationError" class="error"></div>
+</label>
+
+<button type="submit">Add Entry</button>
+<button type="button" onclick="exportToExcel()">Download Excel</button>
+</form>
+
+<pre id="output"></pre>
+
+<script>
+const form = document.getElementById("fishingForm");
+const output = document.getElementById("output");
+const locationError = document.getElementById("locationError");
+const entries = [];
+
+const weatherApiKey = "cc3586d4c42cc1e784e39c79dd5fff72";
+const moonApiKey = "3264359d276642dea6bdb95366fb8896";
+
+// Validate Coordinates
+function validateCoordinates(lat, lon) {
+locationError.textContent = '';
+if (isNaN(lat) || isNaN(lon)) {
+locationError.textContent = "Latitude and Longitude must be numbers.";
+return false;
+}
+if (lat < 45 || lat > 47 || lon < -125 || lon > -121) {
+locationError.textContent = "Coordinates are outside the expected range for the Columbia River / Pacific Northwest.";
+return false;
+}
+return true;
+}
+
+// Fetch Place Name
+async function fetchPlaceName(lat, lon) {
+try {
+const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+if (!res.ok) throw new Error(`Nominatim API error: ${res.statusText}`);
+const data = await res.json();
+return data && data.address && (data.address.village || data.address.town || data.address.city || data.address.county || data.display_name.split(',')[0]) || "Unknown";
+} catch (error) {
+console.error("Error fetching place name:", error);
+return "Unknown";
+}
+}
+
+// Fetch Weather (Current)
+async function fetchWeather(lat, lon) {
+try {
+const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=imperial`);
+if (!res.ok) throw new Error(`Weather API error: ${res.statusText}`);
+const data = await res.json();
+return { temp: data.main.temp, condition: data.weather[0].description };
+} catch (error) {
+console.error("Error fetching weather:", error);
+return { temp: "Unavailable", condition: "Unavailable" };
+}
+}
+
+// Fetch Barometric Pressure Trend
+async function fetchBarometricPressure(lat, lon, date, time) {
+try {
+const currentRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric`);
+const currentData = await currentRes.json();
+const currentPressure = currentData.main.pressure;
+
+const catchTime = new Date(`${date}T${time}`);
+const sixHoursAgo = Math.floor((catchTime.getTime() - 6 * 60 * 60 * 1000) / 1000);
+
+const historyRes = await fetch(`https://api.openweathermap.org/data/3.0/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${sixHoursAgo}&appid=${weatherApiKey}&units=metric`);
+const historyData = await historyRes.json();
+const pastPressure = historyData.current.pressure;
+
+const diff = currentPressure - pastPressure;
+let trend = "Stable";
+if (diff > 0) trend = `Rising by ${diff} hPa`;
+if (diff < 0) trend = `Falling by ${Math.abs(diff)} hPa`;
+
+return { current: currentPressure, past: pastPressure, trend: trend };
+} catch (error) {
+console.error("Error fetching pressure:", error);
+return { current: "Unavailable", past: "Unavailable", trend: "Unavailable" };
+}
+}
+
+// Fetch Moon Phase
+async function fetchMoon(date) {
+try {
+const res = await fetch(`https://api.ipgeolocation.io/astronomy?apiKey=${moonApiKey}&date=${date}&location=Prescott Beach, OR`);
+if (!res.ok) throw new Error(`Moon API error: ${res.statusText}`);
+const data = await res.json();
+return data.moon_phase || "Unavailable";
+} catch (error) {
+console.error("Error fetching moon phase:", error);
+return "Unavailable";
+}
+}
+
+// Fetch Tide Data (NOAA)
+async function fetchTideNOAA(stationId, date, time) {
+const catchTime = new Date(`${date}T${time}`);
+const startTime = new Date(catchTime.getTime() - 6 * 60 * 60 * 1000);
+startTime.setMinutes(0, 0, 0);
+const endTime = new Date(catchTime.getTime() + 6 * 60 * 60 * 1000);
+endTime.setMinutes(0, 0, 0);
+
+const formatTime = t => t.toISOString().slice(0, 13).replace(/[-T:]/g, '') + '00';
+const beginDate = formatTime(startTime);
+const endDate = formatTime(endTime);
+
+const url = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${stationId}&product=predictions&application=fishing_app&begin_date=${beginDate}&end_date=${endDate}&datum=MLLW&interval=60&units=english&time_zone=lst_ldt&format=json`;
+
+try {
+const res = await fetch(url);
+if (!res.ok) throw new Error(`NOAA Tide API error: ${res.statusText}`);
+const data = await res.json();
+if (!data.predictions || data.predictions.length === 0) return { stage: "Unavailable", chart: "No tide data" };
+
+const mid = catchTime.getHours();
+const tideStage = data.predictions.find(p => new Date(p.t).getHours() === mid);
+return { stage: tideStage ? `${tideStage.v} ft` : "Approximate", chart: "Fetched" };
+} catch (error) {
+console.error("Error fetching tide data:", error);
+return { stage: "Unavailable", chart: "Error fetching tide data" };
+}
+}
+
+// Submit Form
+form.addEventListener("submit", async e => {
+e.preventDefault();
+const title = document.getElementById("title").value;
+const date = document.getElementById("date").value;
+const time = document.getElementById("time").value;
+const location = document.getElementById("location").value.split(",");
+const lat = parseFloat(location[0]);
+const lon = parseFloat(location[1]);
+
+if (!validateCoordinates(lat, lon)) return;
+
+const place = await fetchPlaceName(lat, lon);
+const tideStationId = (Math.abs(lat - 45.92) < 0.05 && Math.abs(lon - -122.92) < 0.05) ? "9440422" : "9439040";
+
+const weather = await fetchWeather(lat, lon);
+const tideInfo = await fetchTideNOAA(tideStationId, date, time);
+const moon = await fetchMoon(date);
+const pressure = await fetchBarometricPressure(lat, lon, date, time);
+
+const data = {
+Title: title,
+Date: date,
+Time: time,
+Latitude: lat,
+Longitude: lon,
+Area_Name: place,
+Weather_Temp: `${weather.temp} °F`,
+Weather_Condition: weather.condition,
+Tide_Station_ID_Used: tideStationId,
+Tide_Stage: tideInfo.stage,
+Moon_Phase: moon,
+Barometric_Current: `${pressure.current} hPa`,
+Barometric_6hrs_Ago: `${pressure.past} hPa`,
+Barometric_Pressure_Trend: pressure.trend
 };
 
-const OPENWEATHER_API_KEY = "cc3586d4c42cc1e784e39c79dd5fff72";
-
-const locationSelect = document.createElement("select");
-locationSelect.id = "locationSelect";
-
-Object.keys(locationOptions).forEach(loc => {
-  const option = document.createElement("option");
-  option.value = loc;
-  option.textContent = loc;
-  locationSelect.appendChild(option);
+entries.push(data);
+output.textContent = `Entry added. Total entries: ${entries.length}\nLast entry's area: ${data.Area_Name}\nLast entry's pressure trend: ${data.Barometric_Pressure_Trend}`;
+form.reset();
 });
 
-document.body.appendChild(locationSelect);
-
-const logButton = document.createElement("button");
-logButton.textContent = "Log Catch";
-logButton.onclick = logCatch;
-document.body.appendChild(logButton);
-
-async function logCatch() {
-  const locationName = locationSelect.value;
-  const { coords, stationId } = locationOptions[locationName];
-  const { lat, lon } = coords;
-
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const timeStr = now.toTimeString().slice(0, 5);
-  const beginDate = `${dateStr.replace(/-/g, '')}0000`;
-  const endDate = `${dateStr.replace(/-/g, '')}2359`;
-
-  const tideUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?station=${stationId}&product=predictions&datum=MLLW&units=english&time_zone=lst_ldt&format=json&interval=60&begin_date=${beginDate}&end_date=${endDate}`;
-  const moonUrl = `https://api.farmsense.net/v1/moonphases/?d=${Math.floor(now.getTime() / 1000)}`;
-  const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature,precipitation,windspeed`;
-  const pressureCurrentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_API_KEY}&units=metric`;
-  const pressureHistoryUrl = `https://api.openweathermap.org/data/2.5/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${Math.floor((now.getTime() - 6 * 3600 * 1000) / 1000)}&appid=${OPENWEATHER_API_KEY}&units=metric`;
-
-  try {
-    const [tideRes, moonRes, weatherRes, pressureNowRes, pressurePastRes] = await Promise.all([
-      fetch(tideUrl),
-      fetch(moonUrl),
-      fetch(weatherUrl),
-      fetch(pressureCurrentUrl),
-      fetch(pressureHistoryUrl)
-    ]);
-
-    const tideData = await tideRes.json();
-    const moonData = await moonRes.json();
-    const weatherData = await weatherRes.json();
-    const pressureNowData = await pressureNowRes.json();
-    const pressurePastData = await pressurePastRes.json();
-
-    const tideNow = tideData.predictions.find(p => {
-      const tideTime = new Date(`${p.t.replace(' ', 'T')}:00`);
-      return Math.abs(tideTime - now) < 60 * 60 * 1000;
-    });
-
-    const currentPressure = pressureNowData.main?.pressure;
-    const pastPressure = pressurePastData.current?.pressure;
-    let pressureTrend = "No data";
-    let pressureDiff = 0;
-
-    if (currentPressure && pastPressure) {
-      pressureDiff = currentPressure - pastPressure;
-      if (pressureDiff > 1) pressureTrend = `Rising (+${pressureDiff.toFixed(1)} hPa)`;
-      else if (pressureDiff < -1) pressureTrend = `Falling (${pressureDiff.toFixed(1)} hPa)`;
-      else pressureTrend = "Stable";
-    }
-
-    const entry = {
-      date: dateStr,
-      time: timeStr,
-      location: locationName,
-      lat,
-      lon,
-      tide: tideNow ? `${tideNow.v} ft` : 'No tide data',
-      moon: moonData[0] ? moonData[0].Phase : 'No moon data',
-      weather: weatherData.current ? `${weatherData.current.temperature}°C, Wind: ${weatherData.current.windspeed} km/h` : 'No weather data',
-      pressure: currentPressure ? `${currentPressure} hPa (${pressureTrend})` : 'No pressure data'
-    };
-
-    addToExcel(entry);
-    console.log("Catch Logged:", entry);
-    alert(`Logged: ${JSON.stringify(entry, null, 2)}`);
-  } catch (err) {
-    console.error("Error fetching data:", err);
-    alert("Failed to fetch one or more data sources");
-  }
+// Export to Excel
+function exportToExcel() {
+const ws = XLSX.utils.json_to_sheet(entries);
+const wb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
+XLSX.writeFile(wb, "fishing_log.xlsx");
 }
-
-function addToExcel(entry) {
-  const row = [
-    entry.date,
-    entry.time,
-    `${entry.lat}, ${entry.lon}`,
-    entry.location,
-    entry.tide,
-    entry.moon,
-    entry.weather,
-    entry.pressure
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet([row]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Catch Log");
-
-  XLSX.writeFile(wb, `FishingLog_${entry.date}.xlsx`);
-}
-
-// Load SheetJS
-const script = document.createElement('script');
-script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-document.head.appendChild(script);
+</script>
+</body>
+</html>
