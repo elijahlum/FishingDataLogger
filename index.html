@@ -6,142 +6,130 @@
 <title>Fishing Trip Logger</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-  body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
-  input, button { padding: 10px; margin: 5px; }
-  button { background: #007bff; color: #fff; border: none; cursor: pointer; }
-  button:hover { background: #0056b3; }
+body {
+  font-family: Arial, sans-serif;
+  margin: 20px;
+}
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+}
 </style>
 </head>
 <body>
 <h1>Fishing Trip Logger</h1>
-<input type="text" id="title" placeholder="Title">
-<input type="datetime-local" id="datetime">
-<input type="text" id="latitude" placeholder="Latitude">
-<input type="text" id="longitude" placeholder="Longitude">
+
+<label>Title: <input type="text" id="title"></label><br><br>
+<label>Date: <input type="date" id="date"></label><br><br>
+<label>Time: <input type="time" id="time"></label><br><br>
+<label>Latitude: <input type="number" step="any" id="latitude"></label><br><br>
+<label>Longitude: <input type="number" step="any" id="longitude"></label><br><br>
+<label>Area Name: <input type="text" id="area"></label><br><br>
+
 <button onclick="logTrip()">Log Trip</button>
 
 <script>
-const openWeatherApiKey = "YOUR_OPENWEATHER_API_KEY";
+const openWeatherApiKey = "cc3586d4c42cc1e784e39c79dd5fff72";
 
-// Fetch weather data with error handling
-async function fetchWeather(lat, lon) {
-    try {
-        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=imperial`;
-        const response = await fetch(url);
-        const data = await response.json();
+// ✅ Fetch weather data (with offline fallback)
+async function fetchWeatherData(lat, lon) {
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=imperial`;
 
-        if (data && data.main && data.main.temp && data.weather && data.weather[0]) {
-            return {
-                temp: `${data.main.temp.toFixed(2)} °F`,
-                condition: data.weather[0].description
-            };
-        } else {
-            console.warn("Weather API response missing fields:", data);
-            return { temp: "Unavailable", condition: "Unavailable" };
-        }
-    } catch (error) {
-        console.error("Weather fetch failed:", error);
-        return { temp: "Unavailable", condition: "Unavailable" };
-    }
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Weather API failed");
+    const data = await response.json();
+
+    return {
+      temp: data?.main?.temp ? data.main.temp.toFixed(2) + " °F" : "Unavailable",
+      condition: data?.weather?.[0]?.description || "Unavailable"
+    };
+  } catch (error) {
+    console.warn("Weather fetch failed:", error);
+    return { temp: "Unavailable", condition: "Unavailable" };
+  }
 }
 
-// Fetch NOAA barometric pressure with fallback
+// ✅ Fetch NOAA barometric pressure (with fallback to OpenWeather)
 async function fetchBarometricPressure(lat, lon) {
-    try {
-        const now = new Date();
-        const endTime = now.toISOString();
-        const startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+  const now = new Date();
+  const endDate = now.toISOString();
+  const startDate = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
 
-        // NOAA API endpoint
-        const noaaUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=air_pressure&application=FishingLogger&begin_date=${startTime}&end_date=${endTime}&datum=MSL&station=9439040&time_zone=gmt&units=metric&format=json`;
+  const noaaUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=air_pressure&application=FishingLogger&begin_date=${startDate}&end_date=${endDate}&datum=MSL&station=9439040&time_zone=gmt&units=metric&format=json`;
 
-        const response = await fetch(noaaUrl);
-        const data = await response.json();
+  try {
+    const response = await fetch(noaaUrl);
+    if (!response.ok) throw new Error("NOAA API failed");
+    const data = await response.json();
 
-        if (data && data.data && data.data.length > 0) {
-            const current = parseFloat(data.data[data.data.length - 1].v);
-            const past = parseFloat(data.data[0].v);
-            const trend = current > past ? "Rising" : current < past ? "Falling" : "Steady";
-            return {
-                current: `${current} hPa`,
-                past: `${past} hPa`,
-                trend: trend
-            };
-        } else {
-            console.warn("NOAA response empty, using fallback.");
-            return await fetchBarometricFallback(lat, lon);
-        }
-    } catch (error) {
-        console.error("NOAA pressure fetch failed:", error);
-        return await fetchBarometricFallback(lat, lon);
+    if (data && data.data && data.data.length > 0) {
+      const current = data.data[data.data.length - 1].v + " hPa";
+      const sixHoursAgo = data.data[0].v + " hPa";
+      const trend = parseFloat(current) > parseFloat(sixHoursAgo) ? "Rising" : "Falling";
+      return { current, sixHoursAgo, trend };
+    } else {
+      throw new Error("No NOAA data");
     }
+  } catch (error) {
+    console.warn("NOAA fetch failed, using fallback:", error);
+
+    // ✅ Fallback to OpenWeather
+    try {
+      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=imperial`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("OpenWeather fallback failed");
+      const data = await response.json();
+
+      const pressure = data?.main?.pressure ? data.main.pressure + " hPa" : "Unavailable";
+      return { current: pressure, sixHoursAgo: "Unavailable", trend: "Unavailable" };
+    } catch (fallbackError) {
+      console.warn("Fallback also failed:", fallbackError);
+      return { current: "Unavailable", sixHoursAgo: "Unavailable", trend: "Unavailable" };
+    }
+  }
 }
 
-// Fallback: Use OpenWeather pressure
-async function fetchBarometricFallback(lat, lon) {
-    try {
-        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=metric`;
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if (data && data.main && data.main.pressure) {
-            const pressure = `${data.main.pressure} hPa`;
-            return { current: pressure, past: "Unavailable", trend: "Unavailable" };
-        } else {
-            return { current: "Unavailable", past: "Unavailable", trend: "Unavailable" };
-        }
-    } catch (error) {
-        console.error("Fallback pressure fetch failed:", error);
-        return { current: "Unavailable", past: "Unavailable", trend: "Unavailable" };
-    }
-}
-
-// Main logging function
 async function logTrip() {
-    const title = document.getElementById("title").value || "Untitled Trip";
-    const datetime = document.getElementById("datetime").value;
-    const lat = document.getElementById("latitude").value;
-    const lon = document.getElementById("longitude").value;
+  const title = document.getElementById("title").value;
+  const date = document.getElementById("date").value;
+  const time = document.getElementById("time").value;
+  const lat = parseFloat(document.getElementById("latitude").value);
+  const lon = parseFloat(document.getElementById("longitude").value);
+  const area = document.getElementById("area").value;
 
-    if (!datetime || !lat || !lon) {
-        alert("Please enter date/time, latitude, and longitude.");
-        return;
-    }
+  console.log("Fetching data for trip...");
 
-    try {
-        const weather = await fetchWeather(lat, lon);
-        const barometric = await fetchBarometricPressure(lat, lon);
+  // ✅ Always try to get data, but don't break if something fails
+  const weather = await fetchWeatherData(lat, lon);
+  const barometric = await fetchBarometricPressure(lat, lon);
 
-        const row = {
-            Title: title,
-            Date: datetime.split("T")[0],
-            Time: datetime.split("T")[1],
-            Latitude: lat,
-            Longitude: lon,
-            Area_Name: "Unavailable",
-            Weather_Temp: weather.temp,
-            Weather_Condition: weather.condition,
-            Tide_Station_ID_Used: "9439040",
-            Tide_Stage: "Unavailable",
-            Moon_Phase: "Unavailable",
-            Barometric_Current: barometric.current,
-            Barometric_6hrs_Ago: barometric.past,
-            Barometric_Pressure_Trend: barometric.trend
-        };
+  // ✅ Create row for Excel
+  const row = {
+    Title: title || "Untitled",
+    Date: date || new Date().toISOString().split("T")[0],
+    Time: time || new Date().toLocaleTimeString(),
+    Latitude: lat || "Unavailable",
+    Longitude: lon || "Unavailable",
+    Area_Name: area || "Unavailable",
+    Weather_Temp: weather.temp,
+    Weather_Condition: weather.condition,
+    Tide_Station_ID_Used: "9439040",
+    Tide_Stage: "Unavailable", // You can integrate tide logic later
+    Moon_Phase: "Unavailable", // Placeholder for moon API
+    Barometric_Current: barometric.current,
+    Barometric_6hrs_Ago: barometric.sixHoursAgo,
+    Barometric_Pressure_Trend: barometric.trend
+  };
 
-        console.log("Logging trip:", row);
+  // ✅ Save to Excel
+  const ws = XLSX.utils.json_to_sheet([row]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Trips");
+  XLSX.writeFile(wb, "FishingTripLog.xlsx");
 
-        // Save to Excel
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet([row]);
-        XLSX.utils.book_append_sheet(wb, ws, "Trips");
-        XLSX.writeFile(wb, `FishingTrip_${Date.now()}.xlsx`);
-
-        alert("Trip logged successfully!");
-    } catch (error) {
-        console.error("Error logging trip:", error);
-        alert("Something went wrong. Check console for details.");
-    }
+  console.log("Trip logged successfully:", row);
 }
 </script>
 </body>
