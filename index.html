@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Fishing Trip Logger - Manual Entry</title>
+<title>Fishing Trip Logger</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
     body {
@@ -59,19 +59,18 @@
     .action-btn:hover {
         background: #a71d2a;
     }
-    #entryTable {
+    table {
         width: 100%;
         border-collapse: collapse;
         background: #fff;
-        margin-top: 20px;
     }
-    #entryTable th, #entryTable td {
+    table th, table td {
         border: 1px solid #ccc;
         padding: 8px;
-        text-align: left;
         font-size: 14px;
+        text-align: left;
     }
-    #entryTable th {
+    table th {
         background: #007bff;
         color: white;
     }
@@ -79,7 +78,7 @@
 </head>
 <body>
 
-<h2>Fishing Trip Logger (Manual Entry with Local Storage)</h2>
+<h2>Fishing Trip Logger (Manual Entry)</h2>
 
 <form id="manualForm">
     <label>Title: <input type="text" id="title" required></label>
@@ -90,12 +89,12 @@
     <label>Area Name: <input type="text" id="area"></label>
     <label>Weather Temp (°F): <input type="text" id="weatherTemp"></label>
     <label>Weather Condition: <input type="text" id="weatherCondition"></label>
-    <label>Tide Station ID Used: <input type="text" id="tideStation"></label>
+    <label>Tide Station ID: <input type="text" id="tideStation"></label>
     <label>Tide Stage: <input type="text" id="tideStage"></label>
     <label>Moon Phase: <input type="text" id="moonPhase"></label>
     <label>Barometric Current (hPa): <input type="text" id="baroCurrent"></label>
     <label>Barometric 6 hrs Ago (hPa): <input type="text" id="baro6hrs"></label>
-    <label>Barometric Pressure Trend: <input type="text" id="baroTrend"></label>
+    <label>Barometric Pressure Trend: <input type="text" id="baroTrend" readonly></label>
 
     <div style="display:flex; justify-content: space-between;">
         <button type="submit">Add Entry</button>
@@ -127,82 +126,103 @@
 </table>
 
 <script>
-    const form = document.getElementById("manualForm");
-    const tableBody = document.querySelector("#entryTable tbody");
-    let entries = JSON.parse(localStorage.getItem("fishingEntries")) || [];
+const form = document.getElementById("manualForm");
+const tableBody = document.querySelector("#entryTable tbody");
+let entries = JSON.parse(localStorage.getItem("fishingEntries")) || [];
 
-    // Load saved entries on page load
-    window.onload = function() {
-        entries.forEach((entry, index) => addRow(entry, index));
+// Calculate Barometric Trend automatically
+function calculateBaroTrend(current, sixHoursAgo) {
+    if (!current || !sixHoursAgo) return "";
+    const diff = parseFloat(current) - parseFloat(sixHoursAgo);
+    if (diff > 0) return "Rising";
+    if (diff < 0) return "Falling";
+    return "Steady";
+}
+
+// Load saved entries
+window.onload = function() {
+    entries.forEach((entry, index) => addRow(entry, index));
+};
+
+form.addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    const baroCurrent = document.getElementById("baroCurrent").value;
+    const baro6hrs = document.getElementById("baro6hrs").value;
+    const baroTrend = calculateBaroTrend(baroCurrent, baro6hrs);
+    document.getElementById("baroTrend").value = baroTrend;
+
+    const data = {
+        title: document.getElementById("title").value,
+        date: document.getElementById("date").value,
+        time: document.getElementById("time").value,
+        latitude: document.getElementById("latitude").value,
+        longitude: document.getElementById("longitude").value,
+        area_name: document.getElementById("area").value,
+        weather_temp: document.getElementById("weatherTemp").value,
+        weather_condition: document.getElementById("weatherCondition").value,
+        tide_station_id_used: document.getElementById("tideStation").value,
+        tide_stage: document.getElementById("tideStage").value,
+        moon_phase: document.getElementById("moonPhase").value,
+        barometric_current: baroCurrent,
+        barometric_6hrs_ago: baro6hrs,
+        barometric_pressure_trend: baroTrend
     };
 
-    form.addEventListener("submit", function(e) {
-        e.preventDefault();
+    // Save locally
+    entries.push(data);
+    localStorage.setItem("fishingEntries", JSON.stringify(entries));
+    addRow(data, entries.length - 1);
 
-        const data = {
-            Title: document.getElementById("title").value,
-            Date: document.getElementById("date").value,
-            Time: document.getElementById("time").value,
-            Latitude: document.getElementById("latitude").value,
-            Longitude: document.getElementById("longitude").value,
-            Area_Name: document.getElementById("area").value,
-            Weather_Temp: document.getElementById("weatherTemp").value,
-            Weather_Condition: document.getElementById("weatherCondition").value,
-            Tide_Station_ID_Used: document.getElementById("tideStation").value,
-            Tide_Stage: document.getElementById("tideStage").value,
-            Moon_Phase: document.getElementById("moonPhase").value,
-            Barometric_Current: document.getElementById("baroCurrent").value,
-            Barometric_6hrs_Ago: document.getElementById("baro6hrs").value,
-            Barometric_Pressure_Trend: document.getElementById("baroTrend").value
-        };
+    // Send to backend
+    fetch("http://localhost:3000/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(response => console.log("Saved to database:", response))
+    .catch(err => console.error("Database error:", err));
 
-        entries.push(data);
-        localStorage.setItem("fishingEntries", JSON.stringify(entries));
+    form.reset();
+});
 
-        addRow(data, entries.length - 1);
-        form.reset();
+function addRow(data, index) {
+    const row = document.createElement("tr");
+    Object.values(data).forEach(val => {
+        const cell = document.createElement("td");
+        cell.textContent = val;
+        row.appendChild(cell);
     });
 
-    function addRow(data, index) {
-        const row = document.createElement("tr");
+    const actionCell = document.createElement("td");
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "Delete";
+    deleteBtn.classList.add("action-btn");
+    deleteBtn.onclick = function() { deleteEntry(index); };
+    actionCell.appendChild(deleteBtn);
+    row.appendChild(actionCell);
 
-        Object.values(data).forEach(val => {
-            const cell = document.createElement("td");
-            cell.textContent = val;
-            row.appendChild(cell);
-        });
+    tableBody.appendChild(row);
+}
 
-        // Action Button
-        const actionCell = document.createElement("td");
-        const deleteBtn = document.createElement("button");
-        deleteBtn.textContent = "Delete";
-        deleteBtn.classList.add("action-btn");
-        deleteBtn.onclick = function() {
-            deleteEntry(index);
-        };
-        actionCell.appendChild(deleteBtn);
-        row.appendChild(actionCell);
+function deleteEntry(index) {
+    entries.splice(index, 1);
+    localStorage.setItem("fishingEntries", JSON.stringify(entries));
+    refreshTable();
+}
 
-        tableBody.appendChild(row);
-    }
+function refreshTable() {
+    tableBody.innerHTML = "";
+    entries.forEach((entry, index) => addRow(entry, index));
+}
 
-    function deleteEntry(index) {
-        entries.splice(index, 1);
-        localStorage.setItem("fishingEntries", JSON.stringify(entries));
-        refreshTable();
-    }
-
-    function refreshTable() {
-        tableBody.innerHTML = "";
-        entries.forEach((entry, index) => addRow(entry, index));
-    }
-
-    function exportToExcel() {
-        const ws = XLSX.utils.json_to_sheet(entries);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
-        XLSX.writeFile(wb, "fishing_log_manual.xlsx");
-    }
+function exportToExcel() {
+    const ws = XLSX.utils.json_to_sheet(entries);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
+    XLSX.writeFile(wb, "fishing_log_manual.xlsx");
+}
 </script>
 
 </body>
