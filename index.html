@@ -1,136 +1,209 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fishing Trip Logger</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fishing Trip Logger - Manual Entry</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-body {
-  font-family: Arial, sans-serif;
-  margin: 20px;
-}
-button {
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-}
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 900px;
+        margin: auto;
+        padding: 20px;
+        background: #f8f8f8;
+    }
+    h2 {
+        text-align: center;
+    }
+    form {
+        background: #fff;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    label {
+        display: block;
+        margin-top: 10px;
+        font-weight: bold;
+    }
+    input {
+        width: 100%;
+        padding: 8px;
+        margin-top: 5px;
+        box-sizing: border-box;
+    }
+    button {
+        margin-top: 15px;
+        padding: 10px;
+        border: none;
+        background: #007bff;
+        color: white;
+        font-size: 16px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    button:hover {
+        background: #0056b3;
+    }
+    .action-btn {
+        background: #dc3545;
+        color: white;
+        padding: 5px 10px;
+        font-size: 12px;
+        border-radius: 5px;
+        cursor: pointer;
+        border: none;
+    }
+    .action-btn:hover {
+        background: #a71d2a;
+    }
+    #entryTable {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        margin-top: 20px;
+    }
+    #entryTable th, #entryTable td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: left;
+        font-size: 14px;
+    }
+    #entryTable th {
+        background: #007bff;
+        color: white;
+    }
 </style>
 </head>
 <body>
-<h1>Fishing Trip Logger</h1>
 
-<label>Title: <input type="text" id="title"></label><br><br>
-<label>Date: <input type="date" id="date"></label><br><br>
-<label>Time: <input type="time" id="time"></label><br><br>
-<label>Latitude: <input type="number" step="any" id="latitude"></label><br><br>
-<label>Longitude: <input type="number" step="any" id="longitude"></label><br><br>
-<label>Area Name: <input type="text" id="area"></label><br><br>
+<h2>Fishing Trip Logger (Manual Entry with Local Storage)</h2>
 
-<button onclick="logTrip()">Log Trip</button>
+<form id="manualForm">
+    <label>Title: <input type="text" id="title" required></label>
+    <label>Date: <input type="date" id="date" required></label>
+    <label>Time: <input type="time" id="time" required></label>
+    <label>Latitude: <input type="text" id="latitude"></label>
+    <label>Longitude: <input type="text" id="longitude"></label>
+    <label>Area Name: <input type="text" id="area"></label>
+    <label>Weather Temp (°F): <input type="text" id="weatherTemp"></label>
+    <label>Weather Condition: <input type="text" id="weatherCondition"></label>
+    <label>Tide Station ID Used: <input type="text" id="tideStation"></label>
+    <label>Tide Stage: <input type="text" id="tideStage"></label>
+    <label>Moon Phase: <input type="text" id="moonPhase"></label>
+    <label>Barometric Current (hPa): <input type="text" id="baroCurrent"></label>
+    <label>Barometric 6 hrs Ago (hPa): <input type="text" id="baro6hrs"></label>
+    <label>Barometric Pressure Trend: <input type="text" id="baroTrend"></label>
+
+    <div style="display:flex; justify-content: space-between;">
+        <button type="submit">Add Entry</button>
+        <button type="button" onclick="exportToExcel()">Download Excel</button>
+    </div>
+</form>
+
+<table id="entryTable">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Area</th>
+            <th>Weather Temp</th>
+            <th>Weather Condition</th>
+            <th>Tide Station</th>
+            <th>Tide Stage</th>
+            <th>Moon Phase</th>
+            <th>Baro Current</th>
+            <th>Baro 6hrs Ago</th>
+            <th>Baro Trend</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
 
 <script>
-const openWeatherApiKey = "cc3586d4c42cc1e784e39c79dd5fff72";
+    const form = document.getElementById("manualForm");
+    const tableBody = document.querySelector("#entryTable tbody");
+    let entries = JSON.parse(localStorage.getItem("fishingEntries")) || [];
 
-// ✅ Fetch weather data (with offline fallback)
-async function fetchWeatherData(lat, lon) {
-  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=imperial`;
-
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Weather API failed");
-    const data = await response.json();
-
-    return {
-      temp: data?.main?.temp ? data.main.temp.toFixed(2) + " °F" : "Unavailable",
-      condition: data?.weather?.[0]?.description || "Unavailable"
+    // Load saved entries on page load
+    window.onload = function() {
+        entries.forEach((entry, index) => addRow(entry, index));
     };
-  } catch (error) {
-    console.warn("Weather fetch failed:", error);
-    return { temp: "Unavailable", condition: "Unavailable" };
-  }
-}
 
-// ✅ Fetch NOAA barometric pressure (with fallback to OpenWeather)
-async function fetchBarometricPressure(lat, lon) {
-  const now = new Date();
-  const endDate = now.toISOString();
-  const startDate = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+    form.addEventListener("submit", function(e) {
+        e.preventDefault();
 
-  const noaaUrl = `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=air_pressure&application=FishingLogger&begin_date=${startDate}&end_date=${endDate}&datum=MSL&station=9439040&time_zone=gmt&units=metric&format=json`;
+        const data = {
+            Title: document.getElementById("title").value,
+            Date: document.getElementById("date").value,
+            Time: document.getElementById("time").value,
+            Latitude: document.getElementById("latitude").value,
+            Longitude: document.getElementById("longitude").value,
+            Area_Name: document.getElementById("area").value,
+            Weather_Temp: document.getElementById("weatherTemp").value,
+            Weather_Condition: document.getElementById("weatherCondition").value,
+            Tide_Station_ID_Used: document.getElementById("tideStation").value,
+            Tide_Stage: document.getElementById("tideStage").value,
+            Moon_Phase: document.getElementById("moonPhase").value,
+            Barometric_Current: document.getElementById("baroCurrent").value,
+            Barometric_6hrs_Ago: document.getElementById("baro6hrs").value,
+            Barometric_Pressure_Trend: document.getElementById("baroTrend").value
+        };
 
-  try {
-    const response = await fetch(noaaUrl);
-    if (!response.ok) throw new Error("NOAA API failed");
-    const data = await response.json();
+        entries.push(data);
+        localStorage.setItem("fishingEntries", JSON.stringify(entries));
 
-    if (data && data.data && data.data.length > 0) {
-      const current = data.data[data.data.length - 1].v + " hPa";
-      const sixHoursAgo = data.data[0].v + " hPa";
-      const trend = parseFloat(current) > parseFloat(sixHoursAgo) ? "Rising" : "Falling";
-      return { current, sixHoursAgo, trend };
-    } else {
-      throw new Error("No NOAA data");
+        addRow(data, entries.length - 1);
+        form.reset();
+    });
+
+    function addRow(data, index) {
+        const row = document.createElement("tr");
+
+        Object.values(data).forEach(val => {
+            const cell = document.createElement("td");
+            cell.textContent = val;
+            row.appendChild(cell);
+        });
+
+        // Action Button
+        const actionCell = document.createElement("td");
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "Delete";
+        deleteBtn.classList.add("action-btn");
+        deleteBtn.onclick = function() {
+            deleteEntry(index);
+        };
+        actionCell.appendChild(deleteBtn);
+        row.appendChild(actionCell);
+
+        tableBody.appendChild(row);
     }
-  } catch (error) {
-    console.warn("NOAA fetch failed, using fallback:", error);
 
-    // ✅ Fallback to OpenWeather
-    try {
-      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=imperial`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("OpenWeather fallback failed");
-      const data = await response.json();
-
-      const pressure = data?.main?.pressure ? data.main.pressure + " hPa" : "Unavailable";
-      return { current: pressure, sixHoursAgo: "Unavailable", trend: "Unavailable" };
-    } catch (fallbackError) {
-      console.warn("Fallback also failed:", fallbackError);
-      return { current: "Unavailable", sixHoursAgo: "Unavailable", trend: "Unavailable" };
+    function deleteEntry(index) {
+        entries.splice(index, 1);
+        localStorage.setItem("fishingEntries", JSON.stringify(entries));
+        refreshTable();
     }
-  }
-}
 
-async function logTrip() {
-  const title = document.getElementById("title").value;
-  const date = document.getElementById("date").value;
-  const time = document.getElementById("time").value;
-  const lat = parseFloat(document.getElementById("latitude").value);
-  const lon = parseFloat(document.getElementById("longitude").value);
-  const area = document.getElementById("area").value;
+    function refreshTable() {
+        tableBody.innerHTML = "";
+        entries.forEach((entry, index) => addRow(entry, index));
+    }
 
-  console.log("Fetching data for trip...");
-
-  // ✅ Always try to get data, but don't break if something fails
-  const weather = await fetchWeatherData(lat, lon);
-  const barometric = await fetchBarometricPressure(lat, lon);
-
-  // ✅ Create row for Excel
-  const row = {
-    Title: title || "Untitled",
-    Date: date || new Date().toISOString().split("T")[0],
-    Time: time || new Date().toLocaleTimeString(),
-    Latitude: lat || "Unavailable",
-    Longitude: lon || "Unavailable",
-    Area_Name: area || "Unavailable",
-    Weather_Temp: weather.temp,
-    Weather_Condition: weather.condition,
-    Tide_Station_ID_Used: "9439040",
-    Tide_Stage: "Unavailable", // You can integrate tide logic later
-    Moon_Phase: "Unavailable", // Placeholder for moon API
-    Barometric_Current: barometric.current,
-    Barometric_6hrs_Ago: barometric.sixHoursAgo,
-    Barometric_Pressure_Trend: barometric.trend
-  };
-
-  // ✅ Save to Excel
-  const ws = XLSX.utils.json_to_sheet([row]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Trips");
-  XLSX.writeFile(wb, "FishingTripLog.xlsx");
-
-  console.log("Trip logged successfully:", row);
-}
+    function exportToExcel() {
+        const ws = XLSX.utils.json_to_sheet(entries);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
+        XLSX.writeFile(wb, "fishing_log_manual.xlsx");
+    }
 </script>
+
 </body>
 </html>
