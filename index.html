@@ -81,6 +81,11 @@
 <h2>Fishing Trip Logger (Manual Entry)</h2>
 
 <form id="manualForm">
+    <label for="catch_status">Catch Status:</label>
+        <select id="catch_status">
+          <option value="1">Catch</option>
+          <option value="2">No Catch</option>
+        </select>
     <label>Title: <input type="text" id="title" required></label>
     <label>Date: <input type="date" id="date" required></label>
     <label>Time: <input type="time" id="time" required></label>
@@ -166,7 +171,9 @@ form.addEventListener("submit", function(e) {
         moon_phase: document.getElementById("moonPhase").value,
         barometric_current: baroCurrent,
         barometric_6hrs_ago: baro6hrs,
-        barometric_pressure_trend: baroTrend
+        barometric_pressure_trend: baroTrend,
+        catch_status: document.getElementById('catch_status').value
+};
     };
 
     // Save locally
