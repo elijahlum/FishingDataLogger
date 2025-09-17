@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fishing Trip Logger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    max-width: 900px;
+    margin: auto;
+    padding: 20px;
+    background: #f8f8f8;
+}
+h2 {
+    text-align: center;
+}
+form {
+    background: #fff;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+label {
+    display: block;
+    margin-top: 10px;
+    font-weight: bold;
+}
+input, select {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    box-sizing: border-box;
+}
+button {
+    margin-top: 15px;
+    padding: 10px;
+    border: none;
+    background: #007bff;
+    color: white;
+    font-size: 16px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+button:hover {
+    background: #0056b3;
+}
+.action-btn {
+    background: #dc3545;
+    color: white;
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: none;
+}
+.action-btn:hover {
+    background: #a71d2a;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+table th, table td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    font-size: 14px;
+    text-align: left;
+}
+table th {
+    background: #007bff;
+    color: white;
+}
+</style>
+</head>
+<body>
+
+<h2>Fishing Trip Logger (Manual Entry)</h2>
+
+<form id="manualForm">
+    <label>Catch Status:
+        <select id="catch_status">
+            <option value="1">Catch</option>
+            <option value="2">No Catch</option>
+        </select>
+    </label>
+
+    <label>Title: <input type="text" id="title" required></label>
+    <label>Date: <input type="date" id="date" required></label>
+    <label>Time: <input type="time" id="time" required></label>
+
+    <label>Area Name:
+        <input type="text" id="area" placeholder="Enter or select area">
+        <select id="areaDropdown"></select>
+    </label>
+    <label>Latitude: <input type="text" id="latitude"></label>
+    <label>Longitude: <input type="text" id="longitude"></label>
+
+    <label>Weather Temp (°F): <input type="text" id="weatherTemp"></label>
+    <label>Weather Condition:
+        <select id="weatherCondition">
+            <option value="">Select</option>
+            <option value="Sunny">Sunny</option>
+            <option value="Partly Cloudy">Partly Cloudy</option>
+            <option value="Overcast">Overcast</option>
+        </select>
+    </label>
+    <label>Tide Stage:
+        <select id="tideStage">
+            <option value="">Select</option>
+            <option value="Rising">Rising</option>
+            <option value="Falling">Falling</option>
+            <option value="N/A">N/A</option>
+        </select>
+    </label>
+    <label>Moon Phase:
+        <select id="moonPhase">
+            <option value="">Select</option>
+            <option value="New Moon">New Moon</option>
+            <option value="Waxing Crescent">Waxing Crescent</option>
+            <option value="First Quarter">First Quarter</option>
+            <option value="Waxing Gibbous">Waxing Gibbous</option>
+            <option value="Full Moon">Full Moon</option>
+            <option value="Waning Gibbous">Waning Gibbous</option>
+            <option value="Last Quarter">Last Quarter</option>
+            <option value="Waning Crescent">Waning Crescent</option>
+        </select>
+    </label>
+
+    <label>Barometric Current (hPa): <input type="text" id="baroCurrent"></label>
+    <label>Barometric 6 hrs Ago (hPa): <input type="text" id="baro6hrs"></label>
+    <label>Barometric Pressure Trend: <input type="text" id="baroTrend" readonly></label>
+
+    <div style="display:flex; justify-content: space-between;">
+        <button type="submit">Add Entry</button>
+        <button type="button" onclick="exportToExcel()">Download Excel</button>
+    </div>
+</form>
+
+<table id="entryTable">
+    <thead>
+        <tr>
+            <th>Catch Status</th>
+            <th>Title</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Area</th>
+            <th>Latitude</th>
+            <th>Longitude</th>
+            <th>Weather Temp</th>
+            <th>Weather Condition</th>
+            <th>Tide Stage</th>
+            <th>Moon Phase</th>
+            <th>Baro Current</th>
+            <th>Baro 6hrs Ago</th>
+            <th>Baro Trend</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+const form = document.getElementById("manualForm");
+const tableBody = document.querySelector("#entryTable tbody");
+
+// Load entries
+let entries = JSON.parse(localStorage.getItem("fishingEntries")) || [];
+let locationMap = JSON.parse(localStorage.getItem("locationMap")) || {};
+
+// Populate area dropdown
+const areaDropdown = document.getElementById("areaDropdown");
+function populateAreaDropdown() {
+    areaDropdown.innerHTML = '<option value="">Select saved area</option>';
+    for (let loc in locationMap) {
+        areaDropdown.innerHTML += `<option value="${loc}">${loc}</option>`;
+    }
+}
+populateAreaDropdown();
+
+areaDropdown.addEventListener("change", () => {
+    const loc = locationMap[areaDropdown.value];
+    if (loc) {
+        document.getElementById("area").value = areaDropdown.value;
+        document.getElementById("latitude").value = loc.latitude;
+        document.getElementById("longitude").value = loc.longitude;
+    }
+});
+
+// Calculate barometric trend
+function calculateBaroTrend(current, sixHoursAgo) {
+    if (!current || !sixHoursAgo) return "";
+    const diff = parseFloat(current) - parseFloat(sixHoursAgo);
+    if (diff > 0) return "Rising";
+    if (diff < 0) return "Falling";
+    return "Steady";
+}
+
+// Load saved entries into table
+window.onload = function() {
+    entries.forEach((entry, index) => addRow(entry, index));
+};
+
+form.addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const baroCurrent = document.getElementById("baroCurrent").value;
+    const baro6hrs = document.getElementById("baro6hrs").value;
+    const baroTrend = calculateBaroTrend(baroCurrent, baro6hrs);
+    document.getElementById("baroTrend").value = baroTrend;
+
+    const areaName = document.getElementById("area").value;
+    const lat = document.getElementById("latitude").value;
+    const lon = document.getElementById("longitude").value;
+
+    // Save new location to localStorage
+    if (areaName && lat && lon && !locationMap[areaName]) {
+        locationMap[areaName] = { latitude: lat, longitude: lon };
+        localStorage.setItem("locationMap", JSON.stringify(locationMap));
+        populateAreaDropdown();
+    }
+
+    const data = {
+        catch_status: document.getElementById("catch_status").value,
+        title: document.getElementById("title").value,
+        date: document.getElementById("date").value,
+        time: document.getElementById("time").value,
+        area_name: areaName,
+        latitude: lat,
+        longitude: lon,
+        weather_temp: document.getElementById("weatherTemp").value,
+        weather_condition: document.getElementById("weatherCondition").value,
+        tide_stage: document.getElementById("tideStage").value,
+        moon_phase: document.getElementById("moonPhase").value,
+        barometric_current: baroCurrent,
+        barometric_6hrs_ago: baro6hrs,
+        barometric_pressure_trend: baroTrend
+    };
+
+    // Save locally
+    entries.push(data);
+    localStorage.setItem("fishingEntries", JSON.stringify(entries));
+    addRow(data, entries.length - 1);
+
+    // Send to backend
+    fetch("http://localhost:3000/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+    })
+    .then(res => res.json())
+    .then(response => console.log("Saved to database:", response))
+    .catch(err => console.error("Database error:", err));
+
+    form.reset();
+});
+
+function addRow(data, index) {
+    const row = document.createElement("tr");
+    Object.values(data).forEach(val => {
+        const cell = document.createElement("td");
+        cell.textContent = val;
+        row.appendChild(cell);
+    });
+
+    const actionCell = document.createElement("td");
+    const deleteBtn = document.createElement("button");
+    deleteBtn.textContent = "Delete";
+    deleteBtn.classList.add("action-btn");
+    deleteBtn.onclick = function() { deleteEntry(index); };
+    actionCell.appendChild(deleteBtn);
+    row.appendChild(actionCell);
+
+    tableBody.appendChild(row);
+}
+
+function deleteEntry(index) {
+    entries.splice(index, 1);
+    localStorage.setItem("fishingEntries", JSON.stringify(entries));
+    refreshTable();
+}
+
+function refreshTable() {
+    tableBody.innerHTML = "";
+    entries.forEach((entry, index) => addRow(entry, index));
+}
+
+function export
