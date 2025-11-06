@@ -288,4 +288,13 @@ function refreshTable() {
     entries.forEach((entry, index) => addRow(entry, index));
 }
 
-function export
+function exportToExcel() {
+    const ws = XLSX.utils.json_to_sheet(entries);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fishing Log");
+    XLSX.writeFile(wb, "fishing_log_manual.xlsx");
+}
+</script>
+
+</body>
+</html>
