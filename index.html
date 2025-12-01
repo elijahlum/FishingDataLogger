@@ -4,48 +4,106 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Fishing Trip Logger</title>
+
+<!-- XLSX for Excel export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- Leaflet CSS & JS for the map -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+</script>
+
 <style>
 body {
     font-family: Arial, sans-serif;
-    max-width: 900px;
+    max-width: 1100px;
     margin: auto;
     padding: 20px;
-    background: #f8f8f8;
+    background: #f5f7fb;
 }
 h2 {
     text-align: center;
+    margin-bottom: 10px;
 }
-form {
-    background: #fff;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+.subtitle {
+    text-align: center;
+    font-size: 14px;
+    color: #555;
     margin-bottom: 20px;
 }
-label {
+
+.main-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+/* Cards */
+.card {
+    background: #fff;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* Left = form, right = map */
+.form-card {
+    flex: 1 1 360px;
+}
+.map-card {
+    flex: 1 1 360px;
+}
+
+/* Form styling */
+form label {
     display: block;
     margin-top: 10px;
     font-weight: bold;
+    font-size: 14px;
 }
 input, select {
     width: 100%;
     padding: 8px;
-    margin-top: 5px;
+    margin-top: 4px;
     box-sizing: border-box;
+    border-radius: 6px;
+    border: 1px solid #ccd1e4;
+    font-size: 14px;
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.15);
+}
+
+.button-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 15px;
 }
 button {
-    margin-top: 15px;
+    flex: 1;
     padding: 10px;
     border: none;
     background: #007bff;
     color: white;
-    font-size: 16px;
-    border-radius: 5px;
+    font-size: 15px;
+    border-radius: 6px;
     cursor: pointer;
 }
 button:hover {
     background: #0056b3;
+}
+.secondary-btn {
+    background: #6c757d;
+}
+.secondary-btn:hover {
+    background: #545b62;
 }
 .action-btn {
     background: #dc3545;
@@ -59,6 +117,24 @@ button:hover {
 .action-btn:hover {
     background: #a71d2a;
 }
+
+/* Map */
+#map {
+    width: 100%;
+    height: 350px;
+    border-radius: 12px;
+    margin-top: 10px;
+}
+.map-hint {
+    font-size: 13px;
+    color: #555;
+    margin-top: 5px;
+}
+
+/* Table */
+.table-card {
+    margin-top: 20px;
+}
 table {
     width: 100%;
     border-collapse: collapse;
@@ -67,177 +143,278 @@ table {
 table th, table td {
     border: 1px solid #ccc;
     padding: 8px;
-    font-size: 14px;
+    font-size: 13px;
     text-align: left;
 }
 table th {
     background: #007bff;
     color: white;
 }
+
+@media (max-width: 800px) {
+    .main-layout {
+        flex-direction: column;
+    }
+}
 </style>
 </head>
 <body>
 
-<h2>Fishing Trip Logger (Manual Entry)</h2>
+<h2>Fishing Trip Logger</h2>
+<div class="subtitle">
+    Click on the map to set your spot, save it with a name, and reuse it for future trips.
+</div>
 
-<form id="manualForm">
-    <label>Catch Status:
-        <select id="catch_status">
-            <option value="1">Catch</option>
-            <option value="2">No Catch</option>
-        </select>
-    </label>
+<div class="main-layout">
+    <!-- LEFT: FORM -->
+    <div class="card form-card">
+        <form id="manualForm">
+            <label>Catch Status:
+                <select id="catch_status">
+                    <option value="1">Catch</option>
+                    <option value="2">No Catch</option>
+                </select>
+            </label>
 
-    <label>Title: <input type="text" id="title" required></label>
-    <label>Date: <input type="date" id="date" required></label>
-    <label>Time: <input type="time" id="time" required></label>
+            <label>Title:
+                <input type="text" id="title" required />
+            </label>
 
-    <label>Area Name:
-        <input type="text" id="area" placeholder="Enter or select area">
-        <select id="areaDropdown"></select>
-    </label>
-    <label>Latitude: <input type="text" id="latitude"></label>
-    <label>Longitude: <input type="text" id="longitude"></label>
+            <label>Date:
+                <input type="date" id="date" required />
+            </label>
 
-    <label>Weather Temp (°F): <input type="text" id="weatherTemp"></label>
-    <label>Weather Condition:
-        <select id="weatherCondition">
-            <option value="">Select</option>
-            <option value="Sunny">Sunny</option>
-            <option value="Partly Cloudy">Partly Cloudy</option>
-            <option value="Overcast">Overcast</option>
-        </select>
-    </label>
-    <label>Tide Stage:
-        <select id="tideStage">
-            <option value="">Select</option>
-            <option value="Rising">Rising</option>
-            <option value="Falling">Falling</option>
-            <option value="N/A">N/A</option>
-        </select>
-    </label>
-    <label>Moon Phase:
-        <select id="moonPhase">
-            <option value="">Select</option>
-            <option value="New Moon">New Moon</option>
-            <option value="Waxing Crescent">Waxing Crescent</option>
-            <option value="First Quarter">First Quarter</option>
-            <option value="Waxing Gibbous">Waxing Gibbous</option>
-            <option value="Full Moon">Full Moon</option>
-            <option value="Waning Gibbous">Waning Gibbous</option>
-            <option value="Last Quarter">Last Quarter</option>
-            <option value="Waning Crescent">Waning Crescent</option>
-        </select>
-    </label>
+            <label>Time:
+                <input type="time" id="time" required />
+            </label>
 
-    <label>Barometric Current (hPa): <input type="text" id="baroCurrent"></label>
-    <label>Barometric 6 hrs Ago (hPa): <input type="text" id="baro6hrs"></label>
-    <label>Barometric Pressure Trend: <input type="text" id="baroTrend" readonly></label>
+            <label>Saved Spot:
+                <select id="areaDropdown"></select>
+            </label>
 
-    <div style="display:flex; justify-content: space-between;">
-        <button type="submit">Add Entry</button>
-        <button type="button" onclick="exportToExcel()">Download Excel</button>
+            <label>Area Name:
+                <input type="text" id="area" placeholder="E.g. JC Hole, Johnson Creek, etc." />
+            </label>
+
+            <label>Latitude:
+                <input type="text" id="latitude" placeholder="Click map or type" />
+            </label>
+
+            <label>Longitude:
+                <input type="text" id="longitude" placeholder="Click map or type" />
+            </label>
+
+            <label>Species:
+                <select id="species">
+                    <option value="">Select</option>
+                    <option value="Steelhead">Steelhead</option>
+                    <option value="Chinook">Chinook</option>
+                    <option value="Coho">Coho</option>
+                    <option value="Rainbow Trout">Rainbow Trout</option>
+                    <option value="Cutthroat Trout">Cutthroat Trout</option>
+                    <option value="Sockeye">Sockeye</option>
+                    <option value="Chum">Chum</option>
+                    <option value="Pink">Pink</option>
+                </select>
+            </label>
+
+            <label>Technique:
+                <select id="technique">
+                    <option value="">Select</option>
+                    <option value="Float">Float</option>
+                    <option value="Drift">Drift</option>
+                    <option value="Plunk">Plunk</option>
+                </select>
+            </label>
+
+            <label>Hatchery / Wild:
+                <select id="hatcheryWild">
+                    <option value="">Unknown</option>
+                    <option value="Hatchery">Hatchery</option>
+                    <option value="Wild">Wild</option>
+                </select>
+            </label>
+
+            <label>Weather Temp (°F):
+                <input type="text" id="weatherTemp" />
+            </label>
+
+            <label>Weather Condition:
+                <select id="weatherCondition">
+                    <option value="">Select</option>
+                    <option value="Clear">Clear</option>
+                    <option value="Partly Cloudy">Partly Cloudy</option>
+                    <option value="Overcast">Overcast</option>
+                </select>
+            </label>
+
+            <label>Tide Stage:
+                <select id="tideStage">
+                    <option value="">Select</option>
+                    <option value="Rising">Rising</option>
+                    <option value="Falling">Falling</option>
+                    <option value="N/A">N/A</option>
+                </select>
+            </label>
+
+            <div class="button-row">
+                <button type="button" class="secondary-btn" id="saveSpotBtn">
+                    Save Spot
+                </button>
+                <button type="submit">
+                    Add Entry
+                </button>
+            </div>
+
+            <div class="button-row">
+                <button type="button" onclick="exportToExcel()">
+                    Download Excel
+                </button>
+            </div>
+        </form>
     </div>
-</form>
 
-<table id="entryTable">
-    <thead>
-        <tr>
-            <th>Catch Status</th>
-            <th>Title</th>
-            <th>Date</th>
-            <th>Time</th>
-            <th>Area</th>
-            <th>Latitude</th>
-            <th>Longitude</th>
-            <th>Weather Temp</th>
-            <th>Weather Condition</th>
-            <th>Tide Stage</th>
-            <th>Moon Phase</th>
-            <th>Baro Current</th>
-            <th>Baro 6hrs Ago</th>
-            <th>Baro Trend</th>
-            <th>Action</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
-</table>
+    <!-- RIGHT: MAP -->
+    <div class="card map-card">
+        <label>Map Location</label>
+        <div id="map"></div>
+        <div class="map-hint">
+            🗺️ Click on the map to set latitude & longitude.  
+            Saved spots will auto-center the map and fill coordinates.
+        </div>
+    </div>
+</div>
+
+<!-- TABLE -->
+<div class="card table-card">
+    <table id="entryTable">
+        <thead>
+            <tr>
+                <th>Catch Status</th>
+                <th>Title</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Area</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+                <th>Species</th>
+                <th>Technique</th>
+                <th>Hatchery/Wild</th>
+                <th>Weather Temp</th>
+                <th>Weather Condition</th>
+                <th>Tide Stage</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
 
 <script>
+// ---------- State ----------
 const form = document.getElementById("manualForm");
 const tableBody = document.querySelector("#entryTable tbody");
 
-// Load entries
 let entries = JSON.parse(localStorage.getItem("fishingEntries")) || [];
 let locationMap = JSON.parse(localStorage.getItem("locationMap")) || {};
 
-// Populate area dropdown
 const areaDropdown = document.getElementById("areaDropdown");
+const areaInput    = document.getElementById("area");
+const latInput     = document.getElementById("latitude");
+const lonInput     = document.getElementById("longitude");
+const saveSpotBtn  = document.getElementById("saveSpotBtn");
+
+// ---------- Populate Saved Spots ----------
 function populateAreaDropdown() {
-    areaDropdown.innerHTML = '<option value="">Select saved area</option>';
-    for (let loc in locationMap) {
-        areaDropdown.innerHTML += `<option value="${loc}">${loc}</option>`;
+    areaDropdown.innerHTML = '<option value="">Select saved spot</option>';
+    for (let name in locationMap) {
+        areaDropdown.innerHTML += `<option value="${name}">${name}</option>`;
     }
 }
 populateAreaDropdown();
 
-areaDropdown.addEventListener("change", () => {
-    const loc = locationMap[areaDropdown.value];
-    if (loc) {
-        document.getElementById("area").value = areaDropdown.value;
-        document.getElementById("latitude").value = loc.latitude;
-        document.getElementById("longitude").value = loc.longitude;
-    }
-});
+// ---------- Map Setup ----------
+let map = L.map('map').setView([45.936159, -122.627983], 11); // JC-ish default
 
-// Calculate barometric trend
-function calculateBaroTrend(current, sixHoursAgo) {
-    if (!current || !sixHoursAgo) return "";
-    const diff = parseFloat(current) - parseFloat(sixHoursAgo);
-    if (diff > 0) return "Rising";
-    if (diff < 0) return "Falling";
-    return "Steady";
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+let currentMarker = null;
+
+function setMapMarker(lat, lon) {
+    const latNum = parseFloat(lat);
+    const lonNum = parseFloat(lon);
+    if (isNaN(latNum) || isNaN(lonNum)) return;
+
+    if (currentMarker) {
+        map.removeLayer(currentMarker);
+    }
+    currentMarker = L.marker([latNum, lonNum]).addTo(map);
+    map.setView([latNum, lonNum], 13);
 }
 
-// Load saved entries into table
+// Click on map sets coords + marker
+map.on('click', function(e) {
+    const { lat, lng } = e.latlng;
+    latInput.value = lat.toFixed(6);
+    lonInput.value = lng.toFixed(6);
+    setMapMarker(lat, lng);
+});
+
+// Change saved spot → fill fields + move map
+areaDropdown.addEventListener("change", () => {
+    const name = areaDropdown.value;
+    const loc = locationMap[name];
+    if (!loc) return;
+
+    areaInput.value = name;
+    latInput.value = loc.latitude;
+    lonInput.value = loc.longitude;
+    setMapMarker(loc.latitude, loc.longitude);
+});
+
+// Save current area + coords as a named spot
+saveSpotBtn.addEventListener("click", () => {
+    const name = areaInput.value.trim();
+    const lat  = latInput.value.trim();
+    const lon  = lonInput.value.trim();
+
+    if (!name || !lat || !lon) {
+        alert("Please enter area name and set latitude & longitude (click map or type) before saving a spot.");
+        return;
+    }
+
+    locationMap[name] = { latitude: lat, longitude: lon };
+    localStorage.setItem("locationMap", JSON.stringify(locationMap));
+    populateAreaDropdown();
+    alert(`Saved spot "${name}"`);
+});
+
+// ---------- Load Saved Entries into Table ----------
 window.onload = function() {
     entries.forEach((entry, index) => addRow(entry, index));
 };
 
-form.addEventListener("submit", async function(e) {
+// ---------- Form Submit ----------
+form.addEventListener("submit", function(e) {
     e.preventDefault();
-
-    const baroCurrent = document.getElementById("baroCurrent").value;
-    const baro6hrs = document.getElementById("baro6hrs").value;
-    const baroTrend = calculateBaroTrend(baroCurrent, baro6hrs);
-    document.getElementById("baroTrend").value = baroTrend;
-
-    const areaName = document.getElementById("area").value;
-    const lat = document.getElementById("latitude").value;
-    const lon = document.getElementById("longitude").value;
-
-    // Save new location to localStorage
-    if (areaName && lat && lon && !locationMap[areaName]) {
-        locationMap[areaName] = { latitude: lat, longitude: lon };
-        localStorage.setItem("locationMap", JSON.stringify(locationMap));
-        populateAreaDropdown();
-    }
 
     const data = {
         catch_status: document.getElementById("catch_status").value,
-        title: document.getElementById("title").value,
-        date: document.getElementById("date").value,
-        time: document.getElementById("time").value,
-        area_name: areaName,
-        latitude: lat,
-        longitude: lon,
+        title:        document.getElementById("title").value,
+        date:         document.getElementById("date").value,
+        time:         document.getElementById("time").value,
+        area_name:    areaInput.value,
+        latitude:     latInput.value,
+        longitude:    lonInput.value,
+        species:      document.getElementById("species").value,
+        technique:    document.getElementById("technique").value,
+        hatchery_wild: document.getElementById("hatcheryWild").value,
         weather_temp: document.getElementById("weatherTemp").value,
         weather_condition: document.getElementById("weatherCondition").value,
-        tide_stage: document.getElementById("tideStage").value,
-        moon_phase: document.getElementById("moonPhase").value,
-        barometric_current: baroCurrent,
-        barometric_6hrs_ago: baro6hrs,
-        barometric_pressure_trend: baroTrend
+        tide_stage:   document.getElementById("tideStage").value
     };
 
     // Save locally
@@ -245,22 +422,38 @@ form.addEventListener("submit", async function(e) {
     localStorage.setItem("fishingEntries", JSON.stringify(entries));
     addRow(data, entries.length - 1);
 
-    // Send to backend
+    // Send to backend (server will enrich with astro + baro)
     fetch("http://localhost:3000/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
     })
     .then(res => res.json())
-    .then(response => console.log("Saved to database:", response))
-    .catch(err => console.error("Database error:", err));
+    .then(response => console.log("Saved to DB:", response))
+    .catch(err => console.error("DB error:", err));
 
     form.reset();
 });
 
+// ---------- Table Helpers ----------
 function addRow(data, index) {
     const row = document.createElement("tr");
-    Object.values(data).forEach(val => {
+
+    [
+        data.catch_status,
+        data.title,
+        data.date,
+        data.time,
+        data.area_name,
+        data.latitude,
+        data.longitude,
+        data.species,
+        data.technique,
+        data.hatchery_wild,
+        data.weather_temp,
+        data.weather_condition,
+        data.tide_stage
+    ].forEach(val => {
         const cell = document.createElement("td");
         cell.textContent = val;
         row.appendChild(cell);
@@ -288,6 +481,7 @@ function refreshTable() {
     entries.forEach((entry, index) => addRow(entry, index));
 }
 
+// ---------- Excel Export ----------
 function exportToExcel() {
     const ws = XLSX.utils.json_to_sheet(entries);
     const wb = XLSX.utils.book_new();
