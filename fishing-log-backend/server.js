@@ -47,8 +47,8 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
     const a =
         Math.sin(dLat / 2) ** 2 +
         Math.cos(toRad(lat1)) *
-            Math.cos(toRad(lat2)) *
-            Math.sin(dLon / 2) ** 2;
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) ** 2;
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 }
@@ -432,8 +432,8 @@ async function fetchWeatherData(lat, lon, date) {
 
         // temperature_2m in Fahrenheit + weathercode for condition
         const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}` +
-                    `&hourly=temperature_2m,weathercode&start_date=${formattedDate}&end_date=${formattedDate}` +
-                    `&timezone=America/Los_Angeles&temperature_unit=fahrenheit`;
+            `&hourly=temperature_2m,weathercode&start_date=${formattedDate}&end_date=${formattedDate}` +
+            `&timezone=America/Los_Angeles&temperature_unit=fahrenheit`;
 
         console.log("WEATHER FETCH URL:", url);
 
@@ -515,9 +515,9 @@ app.post('/log', async (req, res) => {
             weather_temp,
             weather_condition,
             tide_stage,
-            moon_phase,                 
-            barometric_current,         
-            barometric_prev3h,        
+            moon_phase,
+            barometric_current,
+            barometric_prev3h,
             tide_station_id_used,
             catch_status
         } = req.body;
@@ -531,7 +531,7 @@ app.post('/log', async (req, res) => {
         if (latitude && longitude) {
             astro = await fetchAstronomyData(latitude, longitude, date);
         }
-                // ----- TIDE LOOKUP (NOAA, dynamic stations) -----
+        // ----- TIDE LOOKUP (NOAA, dynamic stations) -----
         let tideStationUsed = tide_station_id_used || null;
         let tideStageAuto = tide_stage || null;  // prefer manual if you type one
         let tideHeightFt = null;
@@ -634,7 +634,7 @@ app.post('/log', async (req, res) => {
         `;
 
         const values = [
-            title, date, time, latitude || null, longitude || null, area_name || null, 
+            title, date, time, latitude || null, longitude || null, area_name || null,
             species || null, technique || null, hatchery_wild || null,
             finalWeatherTemp, finalWeatherCondition, tideStageAuto || null,
             baroCurrentVal, baroPrevVal, barometric_pressure_trend,
@@ -665,7 +665,9 @@ app.post('/log', async (req, res) => {
                 tide_station_id_used: tideStationUsed,
                 tide_height_ft: tideHeightFt,
                 tide_rate_ft_per_hr: tideRateFtPerHour
-            }
+            },
+            weather_temp: finalWeatherTemp,
+            weather_condition: finalWeatherCondition
         });
 
     } catch (err) {
@@ -828,7 +830,7 @@ app.get('/backfill-tides', async (req, res) => {
               AND longitude IS NOT NULL
               AND date IS NOT NULL
               AND time IS NOT NULL`
-            );
+        );
 
 
         if (rows.length === 0) {
