@@ -423,12 +423,11 @@ form.addEventListener("submit", function(e) {
     addRow(data, entries.length - 1);
 
     // Send to backend (server will enrich with astro + baro)
-    fetch("/log", {
+    fetch("http://localhost:3000/log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
     })
-
     .then(res => res.json())
     .then(response => console.log("Saved to DB:", response))
     .catch(err => console.error("DB error:", err));
